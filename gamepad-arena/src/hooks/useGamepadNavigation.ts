@@ -12,6 +12,7 @@
 import { useEffect, useRef } from 'react'
 import { normalizeGamepadInput } from '../utils/input'
 import { NAV_DIRECTIONS, type NavDirection } from '../utils/focusNavigation'
+import { armLatch, observeRelease, canFire, type LatchState } from '../utils/inputLatch'
 import type { ButtonMapping, NormalizedInput } from '../types'
 
 /** Left-stick magnitude required before it counts as a directional press. */
@@ -64,6 +65,12 @@ export interface GamepadNavigationOptions {
   onBack: () => void
   onStart?: () => void
   onActivity?: () => void
+  /**
+   * Changes on every screen/route transition (e.g. `${route}:${gameState}:${modal}`).
+   * When it changes, the confirm/back release-latch re-arms so a held button
+   * cannot bleed an action across the transition.
+   */
+  lockKey?: string | number
 }
 
 export function useGamepadNavigation(options: GamepadNavigationOptions): void {
@@ -89,6 +96,9 @@ export function useGamepadNavigation(options: GamepadNavigationOptions): void {
     let holdDirection: NavDirection | null = null
     let holdTime = 0
     let repeatTime = 0
+    let lockKey = optionsRef.current.lockKey
+    let confirmLatch: LatchState = armLatch(last)
+    let backLatch: LatchState = armLatch(last)
 
     const loop = (now: number) => {
       const dt = now - last
@@ -102,8 +112,17 @@ export function useGamepadNavigation(options: GamepadNavigationOptions): void {
         if (opts.enabled) {
           const prev = prevRef.current
 
-          if (state.a && !prev.a) opts.onConfirm()
-          if ((state.b && !prev.b) || (state.back && !prev.back)) opts.onBack()
+          // Re-arm the release-latch whenever the screen/route changes.
+          if (opts.lockKey !== lockKey) {
+            lockKey = opts.lockKey
+            confirmLatch = armLatch(now)
+            backLatch = armLatch(now)
+          }
+          observeRelease(confirmLatch, state.a)
+          observeRelease(backLatch, state.b || state.back)
+
+          if (state.a && !prev.a && canFire(confirmLatch, now)) opts.onConfirm()
+          if (((state.b && !prev.b) || (state.back && !prev.back)) && canFire(backLatch, now)) opts.onBack()
           if (state.start && !prev.start) opts.onStart?.()
 
           for (const direction of NAV_DIRECTIONS) {

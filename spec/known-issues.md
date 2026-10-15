@@ -59,6 +59,11 @@
 - Gameplay HUD is drawn as canvas pixels; the DOM result screen mirrors the
   score/grade for assistive tech, but live in-challenge values are not exposed.
 
+### Dependencies
+- `react-router-dom` (routing, HashRouter) and `motion` (UI transitions) were
+  added in iteration 13; both are client-only and pinned. They grow the bundle
+  (~170 KB gzip combined). No game engine was adopted (Canvas 2D retained).
+
 ### Testing
 - No E2E tests (Playwright not configured for the project)
 - No visual regression tests

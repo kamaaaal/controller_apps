@@ -23,6 +23,7 @@ export class ButtonBlitzChallenge implements Challenge {
   private grade: ScoreResult['grade'] = 'F'
   private flashTimer = 0
   private flashDuration = 0.1
+  private elapsed = 0
   private combo = 0
   private maxCombo = 0
 
@@ -33,6 +34,7 @@ export class ButtonBlitzChallenge implements Challenge {
   }
 
   update(dt: number, input: NormalizedInput): ChallengeState {
+    this.elapsed += dt
     if (this.flashTimer > 0) {
       this.flashTimer -= dt
     }
@@ -117,6 +119,21 @@ export class ButtonBlitzChallenge implements Challenge {
       strokeColor: '#000',
       lineWidth: 6,
       glow: 18,
+    })
+
+    // Visible countdown timer (the game is a timed 10s run).
+    const remaining = Math.max(0, this.duration - this.elapsed)
+    const timeFrac = Math.max(0, Math.min(1, remaining / this.duration))
+    const barW = Math.min(360, width - 80)
+    r.drawProgressBar(centerX - barW / 2, 96, barW, 10, timeFrac, {
+      bgColor: PALETTE.ringTrack,
+      fgColor: remaining > 3 ? PALETTE.xboxNeon : PALETTE.red,
+      borderColor: PALETTE.stroke,
+      glow: 8,
+    })
+    r.drawCenteredText(`${remaining.toFixed(1)}s`, centerX, 120, {
+      font: '16px "JetBrains Mono", monospace',
+      color: remaining > 3 ? PALETTE.ink : PALETTE.red,
     })
 
     r.drawCenteredText('PRESS  [ A ]', centerX, centerY - 80, {
@@ -210,5 +227,6 @@ export class ButtonBlitzChallenge implements Challenge {
     this.flashTimer = 0
     this.combo = 0
     this.maxCombo = 0
+    this.elapsed = 0
   }
 }

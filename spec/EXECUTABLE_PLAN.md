@@ -142,6 +142,8 @@ interface Challenge {
 - [x] Settings: deadzone, vibration (if supported)
 - [x] Keyboard fallback for testing (Space = A, Enter = Start, Escape = menu)
 - [x] Neon Xbox-first visual redesign + background controller art (iteration 9)
+- [x] Frosted-glass UI, React Router routes + games-library launcher, motion transitions (iteration 13)
+- [x] Button Blitz visible timer; controller hint as bottom glass chip (iteration 13)
 
 ### 5.2 Audio
 - [ ] Web Audio API: beeps, press sounds, success/fail stings
@@ -179,6 +181,7 @@ Each iteration creates a file in `spec/`:
 - `spec/iteration-10-timing-config-tests.md` — Central timing config, testable loop, lifecycle tests
 - `spec/iteration-11-dual-stick-rush.md` — Twin Target (Dual Stick Rush) challenge
 - `spec/iteration-12-twin-target-theming.md` — Twin Target theme & convention reconciliation
+- `spec/iteration-13-glass-routing-motion.md` — Glass UI, React Router, Motion & input fixes (Rewamp 2)
 - `spec/known-issues.md` — Browser/controller quirks
 
 ---
