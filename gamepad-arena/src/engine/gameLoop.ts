@@ -97,6 +97,14 @@ export class GameLoop {
     }
   }
 
+  /** End a running challenge early (challenge-driven finish, e.g. both ships
+   *  docked). Idempotent from every other state. */
+  finish(): void {
+    if (this.state === 'running') {
+      this.setState('result')
+    }
+  }
+
   resume(): void {
     if (this.state === 'paused') {
       this.setState('running')

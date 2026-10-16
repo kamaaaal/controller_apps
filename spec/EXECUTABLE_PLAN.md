@@ -179,6 +179,10 @@ Each iteration creates a file in `spec/`:
 - `spec/iteration-10-timing-config-tests.md` — Central timing config, testable loop, lifecycle tests
 - `spec/iteration-11-dual-stick-rush.md` — Twin Target (Dual Stick Rush) challenge
 - `spec/iteration-12-twin-target-theming.md` — Twin Target theme & convention reconciliation
+- `spec/iteration-14-organic-glass.md` — Organic soft-edged glass surfaces, library bg-art, joystick-reactive icons
+- `spec/iteration-15-fx-layer-pixi.md` — Game-feel FX layer (tweens/particles/shake/floaters) + lazy-loaded PixiJS for complex games
+- `spec/iteration-16-stick-arcade-games.md` — Joystick-first arcade wave: Thread the Needle, Gravity Jockey, Echo Drift (Pixi), audio synth, instant retry
+- `spec/iteration-17-full-bleed-library.md` — Full-bleed transparent library layout, no panel, no scrolling
 - `spec/known-issues.md` — Browser/controller quirks
 
 ---

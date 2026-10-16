@@ -135,3 +135,17 @@
 - Precision Run, Combo Master, Trigger Control, Rhythm Combo not yet implemented
 - No daily challenges or leaderboards
 - No replay/ghost system
+
+### Engine / tooling (iteration 15)
+- The production `dist` contains an unused async `pixi-*.js` chunk (~185 kB
+  gzip). It is only fetched if a `renderMode: 'pixi'` challenge mounts — no
+  production challenge does today, so it never loads at runtime. It will be
+  used by the first complex Pixi game.
+- The dev-only Pixi showcase (`/play/pixi-demo`) only appears when Vite runs in
+  a development mode (`import.meta.env.DEV`). On this machine
+  `NODE_ENV=production` is exported globally — start the dev server with
+  `NODE_ENV=development npx vite` to see it, and use
+  `npm ci --include=dev` after installs that prune devDependencies.
+- A physical gamepad connected to the OS is visible to any Chromium instance
+  (including the test browser) and can interleave real input with synthetic
+  test pads.

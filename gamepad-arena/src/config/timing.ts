@@ -18,6 +18,9 @@ export const TIMING = {
     'button-blitz': 10,
     'dual-orbit': 15,
     'twin-target': 60,
+    'thread-the-needle': 60,
+    'gravity-jockey': 60,
+    'echo-drift': 75,
   },
 
   /** Twin Target: time limit for a single target-pair round (seconds). */

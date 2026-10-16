@@ -12,7 +12,8 @@
 
 import type { Challenge, ChallengeState, NormalizedInput, ScoreResult } from '../../types'
 import { Renderer } from '../../engine/renderer'
-import { PALETTE, gradeColor } from '../../engine/palette'
+import { PALETTE, gradeColor, isReducedMotion } from '../../engine/palette'
+import { Fx } from '../../engine/fx'
 import { TIMING } from '../../config/timing'
 
 const ROUND_TIME = TIMING.twinTargetRoundSeconds // seconds per round
@@ -53,6 +54,7 @@ export class TwinTargetChallenge implements Challenge {
   private renderer: Renderer | null = null
   private leftCursor: Cursor | null = null
   private rightCursor: Cursor | null = null
+  private fx = new Fx(isReducedMotion)
 
   sessionTime = 0
   roundTime = 0
@@ -74,6 +76,7 @@ export class TwinTargetChallenge implements Challenge {
   update(dt: number, input: NormalizedInput): ChallengeState {
     this.sessionTime += dt
     this.roundTime += dt
+    this.fx.update(dt)
 
     // Input is already normalized + deadzoned upstream; use it directly.
     const leftInput = input.axes.leftStick
@@ -146,6 +149,22 @@ export class TwinTargetChallenge implements Challenge {
       this.streak = 0
     }
 
+    // Visual feedback (iteration 15) — burst at both targets + shake + float
+    // text. Purely decorative; score/state above is untouched.
+    if (completed && this.leftCursor && this.rightCursor) {
+      const left = this.leftCursor
+      const right = this.rightCursor
+      this.fx.burst({ x: left.targetX, y: left.targetY, color: left.color, count: 22 })
+      this.fx.burst({ x: right.targetX, y: right.targetY, color: right.color, count: 22 })
+      this.fx.shake(6, 0.25)
+      this.fx.floatText({
+        x: (left.targetX + right.targetX) / 2,
+        y: (left.targetY + right.targetY) / 2,
+        text: `+100  STREAK x${this.streak}`,
+        color: PALETTE.gold,
+      })
+    }
+
     // Spawn new targets
     this.spawnTargets()
     this.roundTime = 0
@@ -216,6 +235,9 @@ export class TwinTargetChallenge implements Challenge {
 
     r.drawBackdrop()
 
+    // Gameplay layer inside the shake transform; the HUD below stays steady.
+    this.fx.beginShake(r.canvasContext)
+
     // Draw the two play zones.
     r.drawRect(20, 60, width / 2 - 40, height - 120, {
       fillColor: 'rgba(18, 28, 44, 0.55)',
@@ -234,6 +256,8 @@ export class TwinTargetChallenge implements Challenge {
     if (this.leftCursor) this.drawCursor(r, this.leftCursor)
     if (this.rightCursor) this.drawCursor(r, this.rightCursor)
 
+    this.fx.endShake(r.canvasContext)
+
     // HUD
     const remaining = Math.max(0, this.duration - this.sessionTime)
     r.drawCenteredText(`Session: ${remaining.toFixed(1)}s`, width / 2, 30, {
@@ -251,6 +275,8 @@ export class TwinTargetChallenge implements Challenge {
       color: this.grade === 'F' ? PALETTE.gold : gradeColor(this.grade),
       glow: 10,
     })
+
+    this.fx.draw(r)
   }
 
   private drawCursor(r: Renderer, cursor: Cursor): void {
@@ -314,6 +340,7 @@ export class TwinTargetChallenge implements Challenge {
     this.grade = 'F'
     this.leftCursor = null
     this.rightCursor = null
+    this.fx.clear()
 
     // Only spawn targets if renderer exists (tests skip canvas setup)
     if (this.renderer) {

@@ -57,11 +57,24 @@ export interface Challenge {
   name: string
   description: string
   duration: number // seconds
-  setup(ctx: CanvasRenderingContext2D, gamepad: Gamepad): void
+  /** Canvas 2D setup — required path for `renderMode: 'canvas2d'` challenges. */
+  setup?(ctx: CanvasRenderingContext2D, gamepad: Gamepad): void
   update(dt: number, input: NormalizedInput): ChallengeState
-  draw(ctx: CanvasRenderingContext2D): void
+  /** Canvas 2D draw — required path for `renderMode: 'canvas2d'` challenges. */
+  draw?(ctx: CanvasRenderingContext2D): void
   getScore(): ScoreResult
   reset(): void
+  /**
+   * Renderer backend (iteration 15). Defaults to `canvas2d`; `pixi` opts the
+   * challenge into the lazily-loaded PixiJS app — pixi.js is only ever fetched
+   * when a pixi challenge mounts, never for the Canvas 2D games.
+   */
+  renderMode?: 'canvas2d' | 'pixi'
+  /** Pixi setup; called once with the initialised app (our GameLoop drives
+   *  `app.render()`, so Pixi's own ticker stays off). */
+  setupPixi?(app: import('pixi.js').Application, gamepad: Gamepad | null): void
+  /** Per-frame scene sync for pixi challenges; called right before `app.render()`. */
+  drawPixi?(): void
 }
 
 export interface GamepadStatus {

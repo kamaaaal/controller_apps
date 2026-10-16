@@ -36,6 +36,48 @@
   --card-bg: rgba(16, 24, 20, 0.82);
   --overlay-bg: rgba(8, 12, 12, 0.9);
 
+  /* ---- Glass (iteration 13) -------------------------------------------- */
+  /* Frosted-glass surface tokens: layered translucent gradients + blur, a soft
+     inner highlight and a deep drop shadow. Neon accents appear only as glow
+     and gradient tint — never as hard outlines. Surfaces stay dark enough for
+     ≥ 4.5:1 text contrast on top of the page background. */
+  --glass-fill: linear-gradient(
+    155deg,
+    rgba(22, 30, 41, 0.82) 0%,
+    rgba(13, 18, 26, 0.74) 55%,
+    rgba(16, 22, 30, 0.8) 100%
+  );
+  --glass-fill-strong: linear-gradient(
+    160deg,
+    rgba(14, 20, 28, 0.94),
+    rgba(9, 13, 19, 0.9)
+  );
+  --glass-hairline: rgba(255, 255, 255, 0.09);
+  --glass-hairline-lit: rgba(255, 255, 255, 0.16);
+  --glass-blur: 16px;
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --glass-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.5),
+    0 6px 20px rgba(0, 0, 0, 0.35);
+  --glass-solid: #10161f; /* opaque fallback when backdrop-filter is missing */
+
+  /* ---- Z-index scale (iteration 13) ------------------------------------ */
+  /* Single documented scale. Never use ad-hoc values:
+       canvas  < hud  < screens  < modal  < toast  < debug
+     - canvas: gameplay canvas + background art (never paints over UI)
+     - hud:    countdown overlay, status pill, hint chip
+     - screens: menu/result/pause panels
+     - modal:  settings dialog backdrop — covers everything below it
+     - toast:  reserved for future toasts
+     - debug:  dev-only overlay, always on top                                */
+  --z-canvas: 0;
+  --z-hud: 10;
+  --z-screens: 20;
+  --z-modal: 50;
+  --z-toast: 60;
+  --z-debug: 100;
+
+
   /* ---- Semantic accents (+ legacy aliases) ---------------------------- */
   --accent-primary: var(--brand-xbox-neon);
   --accent-secondary: var(--brand-ps);
@@ -118,12 +160,46 @@ body {
   flex-direction: column;
 }
 
+/* ---- App shell & routed pages ------------------------------------------ */
+.app-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Centre-screen page wrapper (library, unknown challenge). Positioned +
+   isolated so its decorative .bg-art can sit behind the page content with a
+   negative z-index without escaping into the root stacking context (the
+   settings backdrop is a separate route using .settings-page). */
+.page {
+  position: relative;
+  isolation: isolate;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  overflow-y: auto;
+}
+
+/* Settings route: plain root; the dialog inside is fixed + --z-modal. */
+.settings-page {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ---- Canvas container ------------------------------------------------- */
 .canvas-container {
   flex: 1;
   position: relative;
   width: 100%;
   height: 100%;
+  min-height: 0;
   background: transparent;
 }
 
@@ -132,21 +208,32 @@ body {
   width: 100%;
   height: 100%;
   position: relative;
-  z-index: 1;
+  z-index: var(--z-canvas);
 }
 
 /* Decorative controller artwork behind everything (menu + idle screens). */
 .bg-art {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: calc(var(--z-canvas) - 1);
   pointer-events: none;
   overflow: hidden;
 }
 
-.bg-art svg {
+/* Icons live in .art-slot wrappers: the slot carries position plus the
+   joystick-driven parallax translate (CSS vars written by useStickParallax),
+   while the inner svg keeps the slow drift animation and picks up a glow
+   proportional to stick magnitude (--joy-m). */
+.bg-art .art-slot {
   position: absolute;
-  color: var(--brand-xbox-neon);
+  will-change: transform;
+}
+
+.bg-art .art-slot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 0 calc(var(--joy-m, 0) * 18px) currentColor);
 }
 
 .bg-art .art-xbox {
@@ -162,6 +249,10 @@ body {
   top: 6%;
   left: -6%;
   opacity: 0.07;
+  transform: translate(calc(var(--joy-x, 0) * -30px), calc(var(--joy-y, 0) * -22px));
+}
+
+.bg-art .art-1 svg {
   transform: rotate(-16deg);
   animation: drift1 26s ease-in-out infinite;
 }
@@ -171,6 +262,10 @@ body {
   bottom: 8%;
   right: -4%;
   opacity: 0.06;
+  transform: translate(calc(var(--joy-x, 0) * 22px), calc(var(--joy-y, 0) * 16px));
+}
+
+.bg-art .art-2 svg {
   transform: rotate(14deg);
   animation: drift2 32s ease-in-out infinite;
 }
@@ -180,6 +275,10 @@ body {
   top: 14%;
   right: 12%;
   opacity: 0.05;
+  transform: translate(calc(var(--joy-x, 0) * -14px), calc(var(--joy-y, 0) * 12px));
+}
+
+.bg-art .art-3 svg {
   animation: drift1 30s ease-in-out infinite reverse;
 }
 
@@ -188,6 +287,10 @@ body {
   bottom: 18%;
   left: 10%;
   opacity: 0.05;
+  transform: translate(calc(var(--joy-x, 0) * 12px), calc(var(--joy-y, 0) * -14px));
+}
+
+.bg-art .art-4 svg {
   animation: drift2 28s ease-in-out infinite;
 }
 
@@ -221,43 +324,44 @@ body {
   align-items: center;
   justify-content: center;
   padding: var(--space-lg);
-  z-index: 10;
+  z-index: var(--z-screens);
 }
 
 .ui-overlay > * {
   pointer-events: auto;
 }
 
-/* ---- Screens ---------------------------------------------------------- */
+/* ---- Screens (soft-edged glass, iteration 14) --------------------------- */
+/* No rectangle and no outline: a radial glass fill whose edges dissolve into
+   the page through a mask, so the panel reads as a haze of frosted glass
+   rather than a boxed container. A soft neon halo replaces the boxed shadow.
+   The centre of the fill stays dark enough for ≥ 4.5:1 text contrast; every
+   fallback below restores an opaque, bounded surface where blur/mask is off. */
 .screen {
+  position: relative;
   width: 100%;
   max-width: 600px;
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--space-xl);
-  border: 1px solid transparent;
+  border: none;
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(var(--overlay-bg), var(--overlay-bg)) padding-box,
-    linear-gradient(135deg, var(--brand-xbox-neon), var(--brand-ps) 55%, transparent) border-box;
-  backdrop-filter: blur(10px);
-  box-shadow:
-    0 0 48px var(--glow-xbox-soft),
-    0 18px 60px rgba(0, 0, 0, 0.55),
-    inset 0 0 40px rgba(0, 0, 0, 0.5);
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+    radial-gradient(130% 100% at 50% -14%, rgba(255, 255, 255, 0.1), transparent 44%),
+    radial-gradient(
+      125% 135% at 50% 46%,
+      rgba(17, 23, 33, 0.92) 0%,
+      rgba(11, 15, 22, 0.84) 56%,
+      rgba(11, 15, 22, 0) 100%
+    );
+  -webkit-mask-image: radial-gradient(100% 100% at 50% 50%, #000 40%, rgba(0, 0, 0, 0) 100%);
+  mask-image: radial-gradient(100% 100% at 50% 50%, #000 40%, rgba(0, 0, 0, 0) 100%);
+  -webkit-backdrop-filter: blur(20px) saturate(1.15);
+  backdrop-filter: blur(20px) saturate(1.15);
+  box-shadow: none;
+  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 34px rgba(155, 240, 11, 0.12));
 }
 
 .screen-title {
@@ -355,18 +459,22 @@ body {
   position: fixed;
   top: var(--space-md);
   right: var(--space-md);
-  z-index: 100;
+  z-index: var(--z-hud);
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   min-height: 36px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-hairline);
+  border-top-color: var(--glass-hairline-lit);
   border-radius: var(--radius-full);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
   font-size: 0.8rem;
-  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
 }
+
 
 .gamepad-indicator {
   width: 10px;
@@ -408,58 +516,268 @@ body {
   white-space: nowrap;
 }
 
-/* ---- Challenge selector ----------------------------------------------- */
-.challenge-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--space-md);
-  margin-top: var(--space-lg);
+/* ---- Games library (iteration 17: full-bleed, no panel) ----------------- */
+/* The library dropped its glass panel: content sits directly over the page
+   background and drifting art, so the grid fits without scrolling. The glass
+   tiles themselves (game cards) remain. */
+.library {
+  width: 100%;
+  max-width: 1240px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--space-sm) 0;
 }
 
-.challenge-card {
-  padding: var(--space-lg);
+.library-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-lg);
+}
+
+.library-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.library-heading .screen-title {
+  margin-bottom: 0;
+  font-size: 1.45rem;
+}
+
+.library-tagline {
+  color: var(--fg-secondary);
+  font-size: 0.92rem;
+}
+
+.library-logo {
+  width: 64px;
+  height: auto;
+  flex: 0 0 auto;
+  color: var(--brand-xbox-neon);
+  opacity: 0.9;
+  filter: drop-shadow(0 0 18px var(--glow-xbox-soft));
+}
+
+.library-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+}
+
+@media (max-width: 1000px) {
+  .library-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .library-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.library-actions {
+  margin-top: 0;
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-height: var(--tap-min);
-  background: linear-gradient(160deg, rgba(20, 27, 36, 0.92), rgba(13, 17, 24, 0.92));
-  border: 2px solid var(--border-color);
-  border-radius: var(--radius-md);
+  padding: 12px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(150% 120% at 50% -20%, rgba(255, 255, 255, 0.08), transparent 50%),
+    linear-gradient(165deg, rgba(20, 27, 38, 0.78) 0%, rgba(11, 15, 22, 0.62) 100%);
+  -webkit-mask-image: radial-gradient(115% 115% at 50% 50%, #000 55%, rgba(0, 0, 0, 0) 100%);
+  mask-image: radial-gradient(115% 115% at 50% 50%, #000 55%, rgba(0, 0, 0, 0) 100%);
+  box-shadow: none;
   cursor: pointer;
-  transition:
-    transform var(--transition-normal),
-    border-color var(--transition-normal),
-    box-shadow var(--transition-normal);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  transition: filter var(--transition-normal);
+  text-align: left;
+}
+
+.game-card:hover {
+  filter: drop-shadow(0 0 18px var(--glow-xbox-soft));
+}
+
+.game-card.selected {
+  background:
+    radial-gradient(150% 120% at 50% -20%, rgba(255, 255, 255, 0.1), transparent 50%),
+    linear-gradient(
+      165deg,
+      var(--card-accent-soft, rgba(155, 240, 11, 0.16)) 0%,
+      rgba(13, 18, 26, 0.82) 100%
+    );
+  filter: drop-shadow(0 0 22px var(--glow-xbox-soft));
+}
+
+.game-card-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(120% 140% at 20% 0%, var(--card-accent-soft, rgba(155, 240, 11, 0.12)), transparent 60%),
+    rgba(7, 11, 16, 0.55);
+  border: 1px solid var(--glass-hairline);
+  color: var(--card-accent, var(--brand-xbox-neon));
+}
+
+.game-card-art svg {
+  width: 36px;
+  height: 36px;
+  filter: drop-shadow(0 0 12px var(--card-accent, var(--brand-xbox-neon)));
+}
+
+.game-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.game-card-name {
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fg-primary);
+  letter-spacing: 0.02em;
+}
+
+.game-card-desc {
+  font-size: 0.78rem;
+  color: var(--fg-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.game-card-meta {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.meta-chip {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-secondary);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(7, 11, 16, 0.6);
+  border: 1px solid var(--glass-hairline);
+}
+
+.game-card-pb {
+  font-size: 0.72rem;
+  color: var(--accent-gold);
+}
+
+.game-card-pb-empty {
+  color: var(--fg-secondary);
+}
+
+/* Connect prompt on the library (also reused on the play route). */
+.connect-note {
+  margin-top: var(--space-md);
+  padding: var(--space-lg);
+  background: var(--glass-fill-strong);
+  border: none;
+  border-radius: var(--radius-lg);
   text-align: center;
 }
 
-.challenge-card:hover {
-  border-color: var(--brand-xbox-neon);
-  transform: translateY(-4px);
-  box-shadow: 0 10px 30px var(--glow-xbox-soft);
-}
-
-.challenge-card.selected {
-  border-color: var(--brand-xbox-neon);
-  background: linear-gradient(160deg, rgba(155, 240, 11, 0.1), rgba(13, 17, 24, 0.92));
-  box-shadow: 0 0 24px var(--glow-xbox-soft);
-}
-
-.challenge-card-name {
+.connect-note-title {
   font-family: var(--font-ui);
-  font-size: 1.2rem;
+  color: var(--face-y);
   font-weight: 700;
+  letter-spacing: 0.04em;
   margin-bottom: var(--space-xs);
-  color: var(--brand-xbox-neon);
 }
 
-.challenge-card-desc {
-  font-size: 0.85rem;
+.connect-note-body {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
   color: var(--fg-secondary);
-  margin-bottom: var(--space-sm);
 }
 
-.challenge-card-duration {
-  font-size: 0.75rem;
+.connect-detected {
+  margin-top: var(--space-md);
+}
+
+.connect-detected-label {
+  font-size: 0.8rem;
   color: var(--face-y);
 }
+
+.connect-detected-list {
+  text-align: left;
+  margin-top: var(--space-xs);
+  padding-left: var(--space-lg);
+  font-size: 0.8rem;
+  color: var(--fg-secondary);
+}
+
+/* ---- Controller hint chip (fix 4c) ------------------------------------- */
+/* Bottom-centre glass pill. aria-hidden in the DOM — purely a visual affordance.
+   Hidden while a run is active (handled in the shell) and on small screens. */
+.action-hints {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-md);
+  transform: translateX(-50%);
+  z-index: var(--z-hud);
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
+  min-height: 36px;
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-hairline);
+  border-top-color: var(--glass-hairline-lit);
+  border-radius: var(--radius-full);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
+  font-size: 0.78rem;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.action-hints span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.action-hints kbd {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand-xbox-neon);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(7, 11, 16, 0.7);
+  border: 1px solid var(--glass-hairline);
+  box-shadow: 0 0 10px var(--glow-xbox-soft);
+}
+
+@media (max-width: 768px) {
+  .action-hints {
+    display: none;
+  }
+}
+
 
 /* ---- Result screen ---------------------------------------------------- */
 .result-screen {
@@ -491,10 +809,11 @@ body {
   gap: var(--space-xl);
   margin: var(--space-lg) 0;
   padding: var(--space-md);
-  background: var(--bg-tertiary);
+  background: rgba(7, 11, 16, 0.55);
   border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--glass-hairline);
 }
+
 
 .result-stat {
   display: flex;
@@ -541,27 +860,72 @@ body {
 }
 
 /* ---- Settings modal --------------------------------------------------- */
+/* ---- Settings dialog backdrop (route-based, iteration 13) --------------- */
+/* Covers everything below it (z-modal above hud/screens); the underlying route
+   is unmounted, so exactly one dialog is ever interactive. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-lg);
-  background: rgba(4, 6, 10, 0.72);
-  backdrop-filter: blur(4px);
-  animation: fadeIn 0.2s ease-out;
+  background:
+    radial-gradient(120% 120% at 50% 0%, rgba(16, 124, 16, 0.08), transparent 55%),
+    rgba(4, 6, 10, 0.7);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+.settings-screen {
+  max-width: 580px;
 }
+
+/* Section divider + heading inside the settings dialog (moved from inline styles). */
+.settings-divider {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--glass-hairline);
+}
+
+.settings-heading {
+  font-family: var(--font-ui);
+  color: var(--accent-cyan);
+  margin-bottom: var(--space-md);
+}
+
+.setting-value {
+  font-size: 0.75rem;
+  color: var(--fg-secondary);
+}
+
+.mapping-reset {
+  margin-top: var(--space-md);
+}
+
+/* Play-route screens */
+.play-idle-screen {
+  text-align: center;
+}
+
+.play-pb {
+  margin: 0 auto var(--space-md);
+  display: inline-block;
+  padding: var(--space-xs) var(--space-md);
+  font-size: 0.85rem;
+  color: var(--accent-gold);
+  background: rgba(255, 210, 63, 0.1);
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  border-radius: var(--radius-full);
+}
+
+.paused-screen {
+  max-width: 400px;
+  text-align: center;
+}
+
+
 
 .settings-group {
   display: flex;
@@ -663,7 +1027,7 @@ body {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  z-index: 20;
+  z-index: var(--z-hud);
 }
 
 .countdown-number {
@@ -675,22 +1039,6 @@ body {
     0 0 20px var(--brand-xbox-neon),
     0 0 40px var(--brand-xbox-neon),
     0 0 70px var(--brand-ps);
-  animation: countdownPop 0.5s ease-out;
-}
-
-@keyframes countdownPop {
-  0% {
-    transform: scale(2);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
 }
 
 .countdown-go {
@@ -747,13 +1095,14 @@ body {
 }
 
 /* ---- Debug overlay ---------------------------------------------------- */
+/* Dev-only diagnostics; sits above everything on the documented scale. */
 .debug-overlay {
-  position: fixed;
+  position: absolute;
   bottom: var(--space-md);
   left: var(--space-md);
-  z-index: 1000;
+  z-index: var(--z-debug);
   background: rgba(0, 0, 0, 0.9);
-  border: 1px solid var(--brand-xbox-neon);
+  border: 1px solid var(--glass-hairline);
   border-radius: var(--radius-md);
   padding: var(--space-md);
   font-family: var(--font-mono);
@@ -762,8 +1111,10 @@ body {
   max-width: 400px;
   max-height: 300px;
   overflow: auto;
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
 }
+
 
 .debug-overlay h4 {
   margin-bottom: var(--space-sm);
@@ -838,6 +1189,10 @@ body {
   .bg-art svg {
     animation: none !important;
   }
+
+  .bg-art .art-slot {
+    transform: none !important;
+  }
 }
 
 .reduced-motion *,
@@ -852,12 +1207,19 @@ body {
   animation: none !important;
 }
 
+.reduced-motion .bg-art .art-slot {
+  transform: none !important;
+}
+
 /* ---- Contrast preferences -------------------------------------------- */
-/* Solid borders, brighter muted text, no meaning carried only by glow. */
+/* Opaque surfaces with visible boundaries, brighter muted text, no meaning
+   carried only by glow or blur (WCAG-friendly fallbacks, iteration 13). */
 @media (prefers-contrast: more) {
   :root {
     --fg-secondary: #d4e4d8;
     --border-color: #ffffff;
+    --glass-hairline: rgba(255, 255, 255, 0.55);
+    --glass-hairline-lit: rgba(255, 255, 255, 0.8);
   }
 }
 
@@ -866,11 +1228,14 @@ body {
   --border-color: #e7f0ea;
 }
 
-.high-contrast .screen {
-  background:
-    linear-gradient(var(--bg-primary), var(--bg-primary)) padding-box,
-    linear-gradient(var(--brand-xbox-neon), var(--brand-xbox-neon)) border-box;
+.high-contrast .screen,
+.high-contrast .game-card,
+.high-contrast .connect-note {
+  background: var(--bg-primary);
   box-shadow: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  filter: none;
 }
 
 .high-contrast .bg-art {
@@ -878,11 +1243,42 @@ body {
 }
 
 @media (prefers-contrast: more) {
-  .screen {
+  .screen,
+  .game-card,
+  .action-hints,
+  .gamepad-status,
+  .connect-note,
+  .modal-backdrop {
+    background: var(--bg-primary);
     box-shadow: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    filter: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
   .bg-art {
     display: none;
+  }
+}
+
+/* ---- No backdrop-filter support: opaque glass fallback ------------------ */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .screen,
+  .game-card,
+  .action-hints,
+  .gamepad-status,
+  .connect-note,
+  .modal-backdrop {
+    background: var(--glass-solid);
+    -webkit-mask-image: none;
+    mask-image: none;
+    filter: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .modal-backdrop {
+    background: rgba(4, 6, 10, 0.94);
   }
 }
 
@@ -892,12 +1288,18 @@ body {
     display: none;
   }
   .screen,
-  .challenge-card,
+  .game-card,
+  .action-hints,
   .gamepad-status,
+  .connect-note,
   .result-stats {
     border: 1px solid CanvasText;
     box-shadow: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    filter: none;
     backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
   .btn {
     border: 2px solid ButtonText;
@@ -918,6 +1320,14 @@ body {
   outline: 3px solid #ffffff;
   box-shadow: 0 0 0 5px var(--glow-xbox);
 }
+
+/* While navigating with the gamepad, always paint a visible focus ring —
+   programmatic focus() is not always reported as :focus-visible. */
+.gamepad-nav :focus {
+  outline: 3px solid var(--brand-xbox-neon);
+  outline-offset: 2px;
+}
+
 
 /* ---- Scrollbar -------------------------------------------------------- */
 ::-webkit-scrollbar {

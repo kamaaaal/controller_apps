@@ -6,6 +6,8 @@
 import type { Challenge, ChallengeState, NormalizedInput, ScoreResult } from '../../types'
 import { Renderer } from '../../engine/renderer'
 import { PALETTE, gradeColor, isReducedMotion } from '../../engine/palette'
+import { Fx } from '../../engine/fx'
+import { quadOut } from '../../engine/easings'
 import { TIMING } from '../../config/timing'
 
 export class ButtonBlitzChallenge implements Challenge {
@@ -25,6 +27,13 @@ export class ButtonBlitzChallenge implements Challenge {
   private flashDuration = 0.1
   private combo = 0
   private maxCombo = 0
+  private fx = new Fx(isReducedMotion)
+  private ripples: Array<{ r: number }> = []
+
+  private buttonPos(): { x: number; y: number } {
+    const { width, height } = this.renderer?.getContext() ?? { width: 0, height: 0 }
+    return { x: width / 2, y: height / 2 + 20 }
+  }
 
   setup(ctx: CanvasRenderingContext2D, _gamepad: Gamepad): void {
     this.renderer?.destroy()
@@ -36,12 +45,21 @@ export class ButtonBlitzChallenge implements Challenge {
     if (this.flashTimer > 0) {
       this.flashTimer -= dt
     }
+    this.fx.update(dt)
 
     const aPressed = input.buttons.a
     if (aPressed && !this.aButtonPrev) {
       const now = performance.now()
       this.pressCount++
       this.flashTimer = this.flashDuration
+
+      // Visual feedback (iteration 15): additive burst + an expanding ripple
+      // ring tweened per press. Decorative only — scoring below is untouched.
+      if (this.renderer) {
+        const { x, y } = this.buttonPos()
+        this.fx.burst({ x, y, color: PALETTE.faceA, count: 14, speed: 260, life: 0.45 })
+        this.addRipple()
+      }
 
       if (this.lastPressTime > 0) {
         const interval = (now - this.lastPressTime) / 1000
@@ -72,6 +90,26 @@ export class ButtonBlitzChallenge implements Challenge {
           : 0,
       },
     }
+  }
+
+  /** One expanding ripple ring, driven by an FX tween and removed on completion. */
+  private addRipple(): void {
+    if (this.ripples.length >= 6) this.ripples.shift()
+    const ripple = { r: 98 }
+    this.ripples.push(ripple)
+    this.fx.tween({
+      from: 98,
+      to: 156,
+      duration: 0.35,
+      ease: quadOut,
+      onUpdate: (r) => {
+        ripple.r = r
+      },
+      onComplete: () => {
+        const index = this.ripples.indexOf(ripple)
+        if (index >= 0) this.ripples.splice(index, 1)
+      },
+    })
   }
 
   private calculateScore(): void {
@@ -140,6 +178,22 @@ export class ButtonBlitzChallenge implements Challenge {
       ctx.restore()
     }
 
+    // Tweened ripple rings (iteration 15), fading as they expand.
+    if (this.ripples.length > 0) {
+      const ctx = r.canvasContext
+      for (const ripple of this.ripples) {
+        ctx.save()
+        ctx.globalAlpha = Math.max(0, 0.6 * (1 - (ripple.r - 98) / 58))
+        r.drawCircle(btnX, btnY, ripple.r, {
+          strokeColor: PALETTE.faceA,
+          lineWidth: 4,
+          glow: 16,
+          glowColor: PALETTE.faceA,
+        })
+        ctx.restore()
+      }
+    }
+
     // A = green face button; the letter keeps it readable without relying on colour.
     r.drawCircle(btnX, btnY, btnRadius, {
       fillColor: '#0c160e',
@@ -182,6 +236,8 @@ export class ButtonBlitzChallenge implements Challenge {
       color: gradeColor(this.grade),
       glow: 14,
     })
+
+    this.fx.draw(r)
   }
 
   getScore(): ScoreResult {
@@ -210,5 +266,7 @@ export class ButtonBlitzChallenge implements Challenge {
     this.flashTimer = 0
     this.combo = 0
     this.maxCombo = 0
+    this.fx.clear()
+    this.ripples = []
   }
 }

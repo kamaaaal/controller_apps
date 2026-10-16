@@ -12,6 +12,7 @@
 import { useEffect, useRef } from 'react'
 import { normalizeGamepadInput } from '../utils/input'
 import { NAV_DIRECTIONS, type NavDirection } from '../utils/focusNavigation'
+import type { InputLockout } from '../utils/inputLockout'
 import type { ButtonMapping, NormalizedInput } from '../types'
 
 /** Left-stick magnitude required before it counts as a directional press. */
@@ -59,6 +60,13 @@ export interface GamepadNavigationOptions {
   enabled: boolean
   deadzone?: number
   mapping?: ButtonMapping
+  /**
+   * Optional transition lock-out (iteration 13, fix 4a). While the latch is
+   * locked, confirm / back / start edges are swallowed; directions still work.
+   * The latch's `update()` is fed every frame (even while disabled) so a button
+   * held across a screen transition must be released before actions resume.
+   */
+  lockout?: InputLockout
   onDirection: (direction: NavDirection) => void
   onConfirm: () => void
   onBack: () => void
@@ -99,12 +107,17 @@ export function useGamepadNavigation(options: GamepadNavigationOptions): void {
         const input = normalizeGamepadInput(opts.gamepad, opts.deadzone ?? 0.15, opts.mapping)
         const state = deriveState(input)
 
+        // Feed the release latch every frame, enabled or not, so a button held
+        // across a transition is only "spent" once it has physically come up.
+        opts.lockout?.update(now, state)
+
         if (opts.enabled) {
           const prev = prevRef.current
+          const locked = opts.lockout?.isLocked(now) ?? false
 
-          if (state.a && !prev.a) opts.onConfirm()
-          if ((state.b && !prev.b) || (state.back && !prev.back)) opts.onBack()
-          if (state.start && !prev.start) opts.onStart?.()
+          if (state.a && !prev.a && !locked) opts.onConfirm()
+          if (((state.b && !prev.b) || (state.back && !prev.back)) && !locked) opts.onBack()
+          if (state.start && !prev.start && !locked) opts.onStart?.()
 
           for (const direction of NAV_DIRECTIONS) {
             if (state[direction] && !prev[direction]) {

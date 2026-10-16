@@ -14,7 +14,8 @@
 
 import type { Challenge, ChallengeState, NormalizedInput, ScoreResult } from '../../types'
 import { Renderer } from '../../engine/renderer'
-import { PALETTE, gradeColor } from '../../engine/palette'
+import { PALETTE, gradeColor, isReducedMotion } from '../../engine/palette'
+import { Fx } from '../../engine/fx'
 import { TIMING } from '../../config/timing'
 import { getStickAngle, getStickMagnitude, angleDiff } from '../../utils/input'
 
@@ -60,6 +61,49 @@ export class DualOrbitChallenge implements Challenge {
   private score = 0
   private grade: ScoreResult['grade'] = 'F'
 
+  private fx = new Fx(isReducedMotion)
+  private leftWhole = 0
+  private rightWhole = 0
+
+  /** Shared orbit layout so update-time FX land exactly on the drawn rings. */
+  private orbitLayout(): { centerX: number; ringY: number; radius: number; leftX: number; rightX: number } {
+    const { width, height } = this.renderer!.getContext()
+    const centerX = width / 2
+    const centerY = height / 2
+    const radius = Math.max(52, Math.min(width, height) * 0.15)
+    const spread = radius * 3.4
+    const ringY = centerY - 10
+    return { centerX, ringY, radius, leftX: centerX - spread / 2, rightX: centerX + spread / 2 }
+  }
+
+  /** Visual feedback (iteration 15): a small burst at the stick when a whole
+   *  rotation completes. Decorative only — scoring is untouched. */
+  private checkOrbitBurst(
+    track: StickTrack,
+    vec: { x: number; y: number },
+    color: string,
+    centerX: number,
+    ringY: number,
+    radius: number,
+    isLeft: boolean
+  ): void {
+    const whole = Math.floor(track.required / TWO_PI)
+    const prev = isLeft ? this.leftWhole : this.rightWhole
+    if (whole > prev) {
+      this.fx.burst({
+        x: centerX + vec.x * radius * 0.82,
+        y: ringY + vec.y * radius * 0.82,
+        color,
+        count: 12,
+        speed: 160,
+        life: 0.5,
+      })
+      this.fx.floatText({ x: centerX, y: ringY - radius - 40, text: 'ORBIT!', color, life: 0.7 })
+    }
+    if (isLeft) this.leftWhole = whole
+    else this.rightWhole = whole
+  }
+
   setup(ctx: CanvasRenderingContext2D, _gamepad: Gamepad): void {
     this.renderer?.destroy()
     this.renderer = new Renderer(ctx.canvas)
@@ -68,6 +112,7 @@ export class DualOrbitChallenge implements Challenge {
 
   update(dt: number, input: NormalizedInput): ChallengeState {
     this.elapsed += dt
+    this.fx.update(dt)
 
     const leftStick = input.axes.leftStick
     const rightStick = input.axes.rightStick
@@ -83,6 +128,12 @@ export class DualOrbitChallenge implements Challenge {
 
     if (this.completionTime < 0 && this.rotations() >= REQUIRED_ROTATIONS) {
       this.completionTime = this.elapsed
+    }
+
+    if (this.renderer) {
+      const layout = this.orbitLayout()
+      this.checkOrbitBurst(this.left, this.leftVec, LEFT_COLOR, layout.leftX, layout.ringY, layout.radius, true)
+      this.checkOrbitBurst(this.right, this.rightVec, RIGHT_COLOR, layout.rightX, layout.ringY, layout.radius, false)
     }
 
     this.calculateScore()
@@ -168,7 +219,6 @@ export class DualOrbitChallenge implements Challenge {
     const r = this.renderer
     const { width, height } = r.getContext()
     const centerX = width / 2
-    const centerY = height / 2
 
     r.drawBackdrop()
 
@@ -185,12 +235,10 @@ export class DualOrbitChallenge implements Challenge {
       color: PALETTE.inkDim,
     })
 
-    const radius = Math.max(52, Math.min(width, height) * 0.15)
-    const spread = radius * 3.4
-    const ringY = centerY - 10
+    const { radius, leftX, rightX, ringY } = this.orbitLayout()
 
-    this.drawOrbit(centerX - spread / 2, ringY, radius, this.leftVec, this.left.required, LEFT_COLOR, 'L')
-    this.drawOrbit(centerX + spread / 2, ringY, radius, this.rightVec, this.right.required, RIGHT_COLOR, 'R')
+    this.drawOrbit(leftX, ringY, radius, this.leftVec, this.left.required, LEFT_COLOR, 'L')
+    this.drawOrbit(rightX, ringY, radius, this.rightVec, this.right.required, RIGHT_COLOR, 'R')
 
     const rotations = this.rotations()
     const progress = Math.min(1, rotations / REQUIRED_ROTATIONS)
@@ -224,6 +272,8 @@ export class DualOrbitChallenge implements Challenge {
       color: gradeColor(this.grade),
       glow: 12,
     })
+
+    this.fx.draw(r)
   }
 
   private drawOrbit(
@@ -294,5 +344,8 @@ export class DualOrbitChallenge implements Challenge {
     this.completionTime = -1
     this.score = 0
     this.grade = 'F'
+    this.fx.clear()
+    this.leftWhole = 0
+    this.rightWhole = 0
   }
 }

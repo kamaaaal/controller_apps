@@ -6,7 +6,10 @@
 - Wants Xbox-forward branding/colors as the dominant palette, with only light PlayStation accents. Confidence: 0.6
 - Likes decorative controller icon artwork placed subtly in the background. Confidence: 0.5
 - Wants accessibility to be improved/hardened (e.g. WCAG-level contrast, focus, reduced motion), not just noted. Confidence: 0.6
-- Prefers modern frosted-glass / blurred-gradient surfaces (glassmorphism) with minimal hairline borders over solid neon outlines. Confidence: 0.6
-- Prefers adopting established libraries/frameworks instead of hand-rolling (e.g. React Router for routing, Phaser or motion/react for a game engine / UI animation). Confidence: 0.55
+- Prefers modern frosted-glass / blurred-gradient surfaces (glassmorphism) with minimal hairline borders over solid neon outlines. Dislikes visible rectangular "container div" panels as cliché — wants organic, soft-edged glass that dissolves into the page (e.g. mask-faded edges) rather than boxed shapes. Confidence: 0.6
+- Wants visual consistency across similar screens: if one screen has decorative flourishes (e.g. background controller art), wants them on all comparable screens, not just one. Confidence: 0.6
+- Likes ambient/decorative UI to be dynamic and input-reactive — e.g. background icons that parallax and glow in response to live joystick movement, not static art. Confidence: 0.6
+- Prefers adopting established libraries/frameworks instead of hand-rolling (e.g. React Router for routing, Phaser or motion/react for a game engine / UI animation). Explicitly questioned writing raw Canvas code when a library would reduce complexity and be reusable across upcoming games — favors solutions that pay off across future work over one-off native implementations. Confidence: 0.7
 - Wants strict layering for modals/overlays so they never overlap or stack wrongly, with an explicit documented z-index scale. Confidence: 0.5
 - Wants navigation to guard against stray or still-held controller input (input lock-out after transitions; only the back button exits a result screen, not confirm). Confidence: 0.5
+- Dislikes primary screens (e.g. the home/library game grid) being cramped or requiring scrolling — wants all items visible in the viewport without scroll, and is happy to drop container panels entirely for a transparent, full-bleed, wide layout to achieve that. Confidence: 0.6
