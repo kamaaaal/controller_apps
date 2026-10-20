@@ -323,7 +323,9 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-lg);
+  /* The extra bottom padding keeps the screen's buttons clear of the fixed
+     controller-hint chip. */
+  padding: var(--space-lg) var(--space-lg) 64px;
   z-index: var(--z-screens);
 }
 
@@ -523,9 +525,10 @@ body {
 .library {
   width: 100%;
   max-width: 1240px;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   padding: var(--space-sm) 0;
 }
 
@@ -535,7 +538,6 @@ body {
   justify-content: center;
   gap: var(--space-lg);
 }
-
 .library-heading {
   display: flex;
   flex-direction: column;
@@ -563,17 +565,31 @@ body {
 
 .library-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Four columns keeps ten challenges to three rows on a wide screen. */
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-md);
+  /* The grid is the only scrolling region: the header, filter row and action
+     buttons stay put, so they are never pushed off screen. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  padding-bottom: var(--space-xs);
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1100px) {
+  .library-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 820px) {
   .library-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 560px) {
   .library-grid {
     grid-template-columns: 1fr;
   }
@@ -1175,6 +1191,523 @@ body {
   }
 }
 
+/* ---- Iteration 18: library filters, skill tags, briefing, HUD, monitor --- */
+
+/* Skill filter row above the library grid. */
+.library-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.filter-chip {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-secondary);
+  min-height: 32px;
+  padding: 4px 14px;
+  border-radius: var(--radius-full);
+  background: rgba(7, 11, 16, 0.6);
+  border: 1px solid var(--glass-hairline);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.filter-chip:hover {
+  color: var(--fg-primary);
+  border-color: var(--glass-hairline-lit);
+}
+
+.filter-chip-active {
+  color: #06120a;
+  background: var(--brand-xbox-neon);
+  border-color: var(--brand-xbox-neon);
+  font-weight: 700;
+}
+
+/* Header stat strip (challenge count / record count). It sits next to the
+   heading rather than at the far right, which would collide with the fixed
+   gamepad status pill. */
+.library-stats {
+  display: flex;
+  gap: var(--space-lg);
+  padding-left: var(--space-lg);
+  border-left: 1px solid var(--glass-hairline);
+}
+
+.library-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.library-stat-value {
+  font-family: var(--font-ui);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--brand-xbox-neon);
+  line-height: 1;
+}
+
+.library-stat-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: var(--fg-secondary);
+}
+
+/* Skill tags on a game card. */
+.skill-chip {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-secondary);
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* The library page fills the viewport so only the grid scrolls. The extra
+   bottom padding keeps the action buttons clear of the fixed hint chip. */
+.library-page {
+  align-items: stretch;
+  padding-bottom: 60px;
+}
+
+/* Pre-run briefing on the idle screen. */
+.briefing {
+  margin-top: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-md);
+  background: rgba(7, 11, 16, 0.55);
+  border: 1px solid var(--glass-hairline);
+  text-align: left;
+}
+
+.briefing-title {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  color: var(--accent-cyan);
+  margin-bottom: var(--space-sm);
+}
+
+.briefing-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.briefing-list li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: var(--fg-primary);
+}
+
+.briefing-list li::before {
+  content: '▸';
+  position: absolute;
+  left: 2px;
+  color: var(--brand-xbox-neon);
+}
+
+.briefing-tags {
+  display: flex;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  margin-top: var(--space-sm);
+}
+
+/* DOM mirror of the live in-game score/time. It sits in the top-left corner
+   so it never collides with the centred canvas title or timer, and it never
+   intercepts pointer events. */
+.hud-bar {
+  position: absolute;
+  top: var(--space-md);
+  left: var(--space-md);
+  z-index: var(--z-hud);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 168px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(6, 9, 14, 0.55);
+  border: 1px solid var(--glass-hairline);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+}
+
+.hud-progress {
+  width: 100%;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.hud-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, var(--brand-xbox), var(--brand-xbox-neon));
+  transition: width 120ms linear;
+}
+
+.hud-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.hud-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hud-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  color: var(--fg-secondary);
+}
+
+.hud-value {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fg-primary);
+}
+
+.hud-value-danger {
+  color: var(--accent-red);
+}
+
+/* Score delta on the result screen. */
+.result-delta {
+  margin-top: calc(var(--space-md) * -1);
+  margin-bottom: var(--space-md);
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+}
+
+.result-delta-up {
+  color: var(--accent-success);
+}
+
+.result-delta-down {
+  color: var(--fg-secondary);
+}
+
+.result-delta-new {
+  color: var(--accent-gold);
+}
+
+/* Live controller monitor in settings. */
+.monitor {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(7, 11, 16, 0.6);
+  border: 1px solid var(--glass-hairline);
+}
+
+.monitor-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: var(--space-sm) 0;
+}
+
+.monitor-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--fg-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+}
+
+.monitor-cell-dpad {
+  border-color: rgba(30, 143, 255, 0.55);
+  color: var(--brand-ps);
+}
+
+.monitor-cell-active {
+  background: var(--brand-xbox-neon);
+  border-color: var(--brand-xbox-neon);
+  color: #06120a;
+  font-weight: 700;
+}
+
+.monitor-dpad-mark {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  color: var(--brand-ps);
+  border: 1px solid rgba(30, 143, 255, 0.55);
+}
+
+.monitor-axes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.monitor-axis {
+  display: grid;
+  grid-template-columns: 38px 1fr 46px;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 0.62rem;
+  color: var(--fg-secondary);
+}
+
+.monitor-axis-bar {
+  position: relative;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.monitor-axis-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--brand-xbox-neon);
+}
+
+.monitor-axis-value {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+/* Hat-switch calibration grid in settings. */
+.hat-calibration {
+  margin: var(--space-sm) 0 var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(7, 11, 16, 0.45);
+  border: 1px solid var(--glass-hairline);
+}
+
+.hat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.hat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hat-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: var(--fg-secondary);
+}
+
+.hat-input {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--fg-primary);
+  background: rgba(7, 11, 16, 0.8);
+  border: 1px solid var(--glass-hairline);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  min-height: var(--tap-min);
+  width: 100%;
+}
+
+.hat-input:focus-visible {
+  outline: 3px solid var(--brand-xbox-neon);
+  outline-offset: 2px;
+}
+
+/* Live D-pad readout in the controller monitor. */
+.monitor-dpad {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+  font-size: 0.7rem;
+  color: var(--fg-secondary);
+}
+
+.monitor-dpad-value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--brand-ps);
+  min-width: 72px;
+}
+
+.monitor-axis-hat .monitor-axis-label {
+  color: var(--brand-ps);
+  font-weight: 700;
+}
+
+.monitor-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-top: var(--space-sm);
+}
+
+.monitor-copy {
+  min-height: 32px;
+  padding: 2px 12px;
+  font-size: 0.72rem;
+}
+
+/* D-pad calibration wizard. */
+.calibration {
+  margin-top: var(--space-sm);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(7, 11, 16, 0.6);
+  border: 1px solid var(--glass-hairline);
+}
+
+.calibration-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.calibration-modes {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.calibration-reset {
+  min-height: 32px;
+  padding: 2px 12px;
+  font-size: 0.72rem;
+}
+
+.calibration-live {
+  color: var(--brand-ps);
+  font-weight: 700;
+}
+
+.calibration-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0;
+}
+
+.calibration-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-hairline);
+}
+
+.calibration-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  color: var(--fg-secondary);
+}
+
+.calibration-value {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--brand-xbox-neon);
+}
+
+.calibration-actions {
+  margin-top: var(--space-sm);
+}
+
+/* Axis calibration step list. */
+.axis-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: var(--space-sm) 0;
+}
+
+.axis-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid transparent;
+}
+
+.axis-step-done {
+  border-color: rgba(57, 211, 83, 0.45);
+}
+
+.axis-step-running {
+  border-color: var(--brand-xbox-neon);
+}
+
+.axis-step-label {
+  font-size: 0.72rem;
+  color: var(--fg-primary);
+}
+
+.axis-step-value {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--fg-secondary);
+}
+
+.axis-step-done .axis-step-value {
+  color: var(--accent-success);
+}
+
+/* An axis that carries a known control. */
+.monitor-axis-role .monitor-axis-label {
+  color: var(--brand-xbox-neon);
+  font-weight: 700;
+}
+
+/* A mapping row that is fixed (the D-pad on a hat-switch controller). */
+.mapping-fixed {
+  display: inline-flex;
+  align-items: center;
+  color: var(--brand-ps);
+  border: 1px dashed rgba(30, 143, 255, 0.5);
+  cursor: default;
+}
+
 /* ---- Reduced motion --------------------------------------------------- */
 /* Honour the OS setting and the in-app toggle (.reduced-motion on root). */
 @media (prefers-reduced-motion: reduce) {
@@ -1248,7 +1781,11 @@ body {
   .action-hints,
   .gamepad-status,
   .connect-note,
-  .modal-backdrop {
+  .modal-backdrop,
+  .hud-bar,
+  .briefing,
+  .monitor,
+  .result-stats {
     background: var(--bg-primary);
     box-shadow: none;
     -webkit-mask-image: none;
@@ -1269,7 +1806,11 @@ body {
   .action-hints,
   .gamepad-status,
   .connect-note,
-  .modal-backdrop {
+  .modal-backdrop,
+  .hud-bar,
+  .briefing,
+  .monitor,
+  .result-stats {
     background: var(--glass-solid);
     -webkit-mask-image: none;
     mask-image: none;
@@ -1292,7 +1833,12 @@ body {
   .action-hints,
   .gamepad-status,
   .connect-note,
-  .result-stats {
+  .result-stats,
+  .hud-bar,
+  .briefing,
+  .monitor,
+  .filter-chip,
+  .skill-chip {
     border: 1px solid CanvasText;
     box-shadow: none;
     -webkit-mask-image: none;
@@ -1306,6 +1852,14 @@ body {
   }
   .setting-toggle input:checked + .setting-toggle-slider {
     background: Highlight;
+  }
+  .monitor-cell-active {
+    background: Highlight;
+    color: HighlightText;
+  }
+  .filter-chip-active {
+    background: Highlight;
+    color: HighlightText;
   }
 }
 

@@ -2,19 +2,25 @@
  * `/` — the games library (iteration 13).
  *
  * The home is a launcher-style dashboard: a responsive grid of glass game tiles
- * with cover art, description, difficulty and personal best. Click/A on a card
- * routes into the game (`/play/:challengeId`); ☰ (Start) opens the selected
- * card. B has nothing above the library to back out to, so it is a no-op.
+ * with cover art, description, difficulty, skill tags and personal best.
+ * Click/A on a card routes into the game (`/play/:challengeId`); ☰ (Start)
+ * opens the selected card. B has nothing above the library to back out to, so
+ * it is a no-op.
+ *
+ * Iteration 18: with ten challenges in the lineup the grid needs a way to
+ * narrow down, so a skill filter sits above it. The filter row is plain
+ * buttons, which means it is reachable with the same gamepad navigation as
+ * everything else.
  */
 
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import type { CSSProperties } from 'react'
 import { challenges } from '../challenges'
-import { getChallengeMeta, type ChallengeGlyph } from '../challenges/meta'
+import { getChallengeMeta, type ChallengeGlyph, type ChallengeSkill } from '../challenges/meta'
 import { playPath, ROUTES } from '../utils/routes'
-import { DEFAULT_BUTTON_MAPPING } from '../utils/input'
+import { overridesFromSettings } from '../utils/input'
 import { usePageNavigation } from '../hooks/usePageNavigation'
 import { useStickParallax } from '../hooks/useStickParallax'
 import { ControllerGlyph } from '../components/ControllerGlyph'
@@ -74,6 +80,45 @@ function GameGlyph({ kind }: { kind: ChallengeGlyph }) {
       </svg>
     )
   }
+  if (kind === 'pattern') {
+    return (
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
+        <rect x="8" y="14" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="3" />
+        <rect x="26" y="14" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="3" />
+        <rect x="44" y="14" width="12" height="12" rx="3" stroke="currentColor" strokeWidth="3" />
+        <rect x="26" y="38" width="12" height="12" rx="3" fill="currentColor" />
+      </svg>
+    )
+  }
+  if (kind === 'mirror') {
+    return (
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
+        <path d="M32 6 V58" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" opacity="0.6" />
+        <path d="M26 16 L10 32 L26 48" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M38 16 L54 32 L38 48" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (kind === 'beam') {
+    return (
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
+        <path d="M8 42 L56 24" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" />
+        <circle cx="26" cy="35" r="6" fill="currentColor" />
+        <circle cx="46" cy="30" r="4" stroke="currentColor" strokeWidth="2.5" />
+        <path d="M8 52 H56" stroke="currentColor" strokeWidth="2" opacity="0.4" />
+      </svg>
+    )
+  }
+  if (kind === 'maze') {
+    return (
+      <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
+        <rect x="10" y="10" width="44" height="44" rx="4" stroke="currentColor" strokeWidth="3" />
+        <path d="M32 10 V32 H10 M32 32 H54 V54 M32 32 V54" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        <circle cx="15" cy="49" r="3.5" fill="currentColor" />
+        <circle cx="49" cy="16" r="3.5" fill="currentColor" />
+      </svg>
+    )
+  }
   return (
     <svg viewBox="0 0 64 64" fill="none" aria-hidden="true" focusable="false">
       <circle cx="32" cy="32" r="6" fill="currentColor" />
@@ -96,6 +141,7 @@ interface LibraryPageProps {
 export function LibraryPage({ connected, gamepad, settings, personalBests, lockout }: LibraryPageProps) {
   const navigate = useNavigate()
   const [selectedId, setSelectedId] = useState(challenges[0]?.id ?? 'button-blitz')
+  const [skillFilter, setSkillFilter] = useState<ChallengeSkill | 'All'>('All')
   const scopeRef = useRef<HTMLDivElement>(null)
   const bgArtRef = useRef<HTMLDivElement>(null)
 
@@ -104,11 +150,33 @@ export function LibraryPage({ connected, gamepad, settings, personalBests, locko
 
   const openGame = (challengeId: string) => navigate(playPath(challengeId))
 
+  // Only the skills that actually appear in the lineup get a filter chip.
+  const availableSkills = useMemo(() => {
+    const skills = new Set<ChallengeSkill>()
+    for (const challenge of challenges) {
+      if (challenge.id === 'pixi-demo') continue
+      for (const skill of getChallengeMeta(challenge.id).skills) skills.add(skill)
+    }
+    return Array.from(skills)
+  }, [])
+
+  const visibleChallenges = useMemo(
+    () =>
+      challenges.filter((challenge) => {
+        if (challenge.id === 'pixi-demo') return false
+        if (skillFilter === 'All') return true
+        return getChallengeMeta(challenge.id).skills.includes(skillFilter)
+      }),
+    [skillFilter]
+  )
+
+  const records = Object.keys(personalBests).length
+
   const { navMode } = usePageNavigation({
     gamepad,
     enabled: true,
     deadzone: settings.deadzone,
-    mapping: settings.customMapping || DEFAULT_BUTTON_MAPPING,
+    mapping: overridesFromSettings(settings),
     lockout,
     getScope: () => scopeRef.current,
     selectedSelector: '.game-card.selected',
@@ -122,7 +190,7 @@ export function LibraryPage({ connected, gamepad, settings, personalBests, locko
 
   return (
     <motion.div
-      className="page"
+      className="page library-page"
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
@@ -151,6 +219,16 @@ export function LibraryPage({ connected, gamepad, settings, personalBests, locko
             <h1 className="screen-title">GAMEPAD ARENA</h1>
             <p className="library-tagline">Pick a challenge — grab a controller and go.</p>
           </div>
+          <div className="library-stats" aria-label={`${records} of ${visibleChallenges.length} challenges have a personal best`}>
+            <span className="library-stat">
+              <span className="library-stat-value">{visibleChallenges.length}</span>
+              <span className="library-stat-label">CHALLENGES</span>
+            </span>
+            <span className="library-stat">
+              <span className="library-stat-value">{records}</span>
+              <span className="library-stat-label">RECORDS</span>
+            </span>
+          </div>
         </header>
 
         {!connected && (
@@ -163,8 +241,21 @@ export function LibraryPage({ connected, gamepad, settings, personalBests, locko
           </div>
         )}
 
+        <div className="library-filters" role="group" aria-label="Filter by skill">
+          {(['All', ...availableSkills] as const).map((skill) => (
+            <button
+              key={skill}
+              className={'filter-chip' + (skillFilter === skill ? ' filter-chip-active' : '')}
+              aria-pressed={skillFilter === skill}
+              onClick={() => setSkillFilter(skill)}
+            >
+              {skill}
+            </button>
+          ))}
+        </div>
+
         <div className="library-grid" role="listbox" aria-label="Games library">
-          {challenges.map((challenge) => {
+          {visibleChallenges.map((challenge) => {
             const meta = getChallengeMeta(challenge.id)
             const pb = personalBests[challenge.id]
             const isSelected = selectedId === challenge.id
@@ -203,6 +294,11 @@ export function LibraryPage({ connected, gamepad, settings, personalBests, locko
                 <div className="game-card-meta">
                   <span className="meta-chip">{challenge.duration}s</span>
                   <span className="meta-chip meta-chip-difficulty">{meta.difficulty}</span>
+                  {meta.skills.map((skill) => (
+                    <span className="skill-chip" key={skill}>
+                      {skill}
+                    </span>
+                  ))}
                 </div>
                 {pb ? (
                   <div className="game-card-pb">
@@ -234,4 +330,3 @@ export function LibraryPage({ connected, gamepad, settings, personalBests, locko
     </motion.div>
   )
 }
-

@@ -8,8 +8,12 @@
  * - entering `result` re-arms it, A is vetoed on the result screen and only B
  *   (back → library) can leave it,
  * - ☰ (Start) starts the run when idle and pauses/resumes while playing,
- * - the Button Blitz HUD timer is drawn from the game loop's remaining time
- *   (fix 4b), styled like the other challenges' timers.
+ * - the controller is sampled once per frame by the game loop itself, so the
+ *   challenge always acts on fresh input with no extra animation frame of lag.
+ *
+ * Iteration 18: the host no longer knows about individual games. The timer HUD
+ * comes from `challenge.drawHud`, the briefing from the challenge metadata, and
+ * the live score/time are mirrored into a DOM HUD for assistive tech.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -17,18 +21,24 @@ import { motion } from 'motion/react'
 import { useNavigate } from 'react-router-dom'
 import { usePageNavigation } from '../hooks/usePageNavigation'
 import { useStickParallax } from '../hooks/useStickParallax'
-import { normalizeGamepadInput, DEFAULT_BUTTON_MAPPING } from '../utils/input'
+import { normalizeGamepadInput, overridesFromSettings } from '../utils/input'
 import { goBackTarget, ROUTES } from '../utils/routes'
-import { formatSecondsRemaining } from '../utils/timerFormat'
 import { GameLoop } from '../engine/gameLoop'
 import { Renderer } from '../engine/renderer'
 import { createPixiApp, destroyPixiApp } from '../engine/pixiHost'
-import { PALETTE } from '../engine/palette'
-import { getChallenge } from '../challenges'
+import { getChallenge, challenges } from '../challenges'
+import { getChallengeMeta } from '../challenges/meta'
 import { ControllerGlyph } from '../components/ControllerGlyph'
 import type { Application } from 'pixi.js'
 import type { InputLockout } from '../utils/inputLockout'
-import type { GameState, ScoreResult, PersonalBest, Settings, Challenge } from '../types'
+import type {
+  ChallengeState,
+  GameState,
+  NormalizedInput,
+  PersonalBest,
+  ScoreResult,
+  Settings,
+} from '../types'
 
 const DETAIL_LABELS: Record<string, string> = {
   presses: 'Presses',
@@ -43,6 +53,24 @@ const DETAIL_LABELS: Record<string, string> = {
   bestStreak: 'Best Streak',
   avgTime: 'Avg Time',
   accuracy: 'Accuracy',
+  patterns: 'Patterns',
+  longest: 'Longest',
+  mistakes: 'Mistakes',
+  recallMs: 'Recall',
+  locks: 'Locks',
+  avgHold: 'Avg Hold',
+  orbs: 'Orbs',
+  lives: 'Lives',
+  mazes: 'Mazes',
+  walls: 'Wall Hits',
+  gates: 'Gates',
+  perfects: 'Perfect',
+  syncs: 'Syncs',
+  notesHit: 'Notes Hit',
+  notesMissed: 'Missed',
+  avgTimingMs: 'Avg Timing',
+  cleanRounds: 'Clean Rounds',
+  accuracyPct: 'Accuracy',
 }
 
 const GRADE_COLORS: Record<ScoreResult['grade'], string> = {
@@ -57,36 +85,19 @@ const GRADE_COLORS: Record<ScoreResult['grade'], string> = {
 function formatDetail(key: string, value: number): string {
   if (key === 'maxCombo') return `x${value}`
   if (key.endsWith('Pct')) return `${Math.round(value)}%`
-  if (key === 'avgInterval' || key === 'avgTime') return `${value.toFixed(2)}s`
+  if (key === 'avgInterval' || key === 'avgTime' || key === 'avgHold') return `${value.toFixed(2)}s`
   if (key === 'accuracy') return `${Math.round(value)}%`
   if (key === 'bestStreak') return `x${value}`
+  if (key === 'recallMs' || key === 'avgTimingMs') return `${Math.round(value)}ms`
   if (key === 'pressesPerSecond' || key === 'rotations') return value.toFixed(1)
   return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(1)
 }
 
-/**
- * Fix 4b: a loop-driven time bar + seconds readout, drawn after the challenge's
- * own frame so it never interferes with gameplay drawing. Only shown for Button
- * Blitz (the other challenges already draw their own timers). Styling mirrors
- * Dual Orbit's timer: `ringTrack` bar, Xbox neon → red under 5 s.
- */
-function drawTimerHud(r: Renderer, remaining: number, duration: number): void {
-  const { width } = r.getContext()
-  const barWidth = Math.min(280, width * 0.4)
-  const x = width / 2 - barWidth / 2
-  const progress = duration > 0 ? Math.min(1, Math.max(0, 1 - remaining / duration)) : 1
-  const danger = remaining <= 5
-  r.drawProgressBar(x, 16, barWidth, 10, progress, {
-    bgColor: PALETTE.ringTrack,
-    fgColor: danger ? PALETTE.red : PALETTE.xboxNeon,
-    borderColor: PALETTE.stroke,
-    glow: 10,
-  })
-  r.drawCenteredText(formatSecondsRemaining(remaining), width / 2 + barWidth / 2 + 36, 28, {
-    font: '18px "JetBrains Mono", monospace',
-    color: danger ? PALETTE.red : PALETTE.ink,
-    glow: danger ? 10 : 0,
-  })
+/** Live values mirrored into the DOM so they are not canvas-only. */
+interface HudState {
+  score: number
+  remaining: number
+  progress: number
 }
 
 export interface PlayPageProps {
@@ -114,11 +125,15 @@ export function PlayPage({
 }: PlayPageProps) {
   const navigate = useNavigate()
   const challenge = getChallenge(challengeId)
+  const meta = getChallengeMeta(challengeId)
 
   const [gameState, setGameState] = useState<GameState>('idle')
   const [lastResult, setLastResult] = useState<ScoreResult | null>(null)
   const [countdownValue, setCountdownValue] = useState<number | null>(null)
   const [pixiReady, setPixiReady] = useState(false)
+  const [hud, setHud] = useState<HudState>({ score: 0, remaining: 0, progress: 0 })
+  /** The personal best as it stood when the current run started. */
+  const [pbAtStart, setPbAtStart] = useState<PersonalBest | undefined>(undefined)
 
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -126,16 +141,25 @@ export function PlayPage({
   const pixiAppRef = useRef<Application | null>(null)
   const gameLoopRef = useRef<GameLoop | null>(null)
   const rendererRef = useRef<Renderer | null>(null)
-  const currentChallengeRef = useRef<Challenge | null>(null)
-  const animationFrameRef = useRef<number | null>(null)
+  const currentChallengeRef = useRef<ReturnType<typeof getChallenge>>(null)
+  const latestStateRef = useRef<ChallengeState | null>(null)
   const startButtonPrevRef = useRef(false)
   const resultHandledRef = useRef(false)
   const keyboardStateRef = useRef({ a: false, start: false, escape: false })
 
-  const currentMapping = useMemo(
-    () => settings.customMapping || DEFAULT_BUTTON_MAPPING,
-    [settings.customMapping]
-  )
+  // Per-device input overrides (button map, axis map, hat switch). These are
+  // layered on top of the profile detected for the connected controller.
+  const currentOverrides = useMemo(() => overridesFromSettings(settings), [settings])
+
+  // Latest input settings, read by the loop's sampler without re-creating it.
+  const gamepadRef = useRef(gamepad)
+  const mappingRef = useRef(currentOverrides)
+  const deadzoneRef = useRef(settings.deadzone)
+  useEffect(() => {
+    gamepadRef.current = gamepad
+    mappingRef.current = currentOverrides
+    deadzoneRef.current = settings.deadzone
+  }, [gamepad, currentOverrides, settings.deadzone])
 
   // Report the in-game phase to the shell (it drives the hint chip).
   useEffect(() => {
@@ -186,9 +210,10 @@ export function PlayPage({
     }
   }, [])
 
-  // Engine init: the game loop always runs; a Canvas 2D renderer is only
-  // created for canvas2d challenges — pixi challenges get their own lazily
-  // imported app below (iteration 15), keeping pixi.js out of the Canvas path.
+  // Engine init: the game loop owns the clock, the input sampling and the
+  // simulation. A Canvas 2D renderer is only created for canvas2d challenges —
+  // pixi challenges get their own lazily imported app below (iteration 15),
+  // keeping pixi.js out of the Canvas path.
   useEffect(() => {
     if (!canvasContainerRef.current) return
     if (challenge?.renderMode !== 'pixi') {
@@ -196,31 +221,85 @@ export function PlayPage({
     }
     const loop = new GameLoop()
     loop.setOnStateChange(setGameState)
-    loop.setDrawFn(() => {
+
+    // Sample the controller exactly once per rendered frame, ahead of the
+    // simulation. This replaces the old second animation frame that drove the
+    // challenge with a hardcoded 1/60 step.
+    loop.setInputProvider((): NormalizedInput | null => {
+      const pad = gamepadRef.current
+      if (!pad) return null
+      const input = normalizeGamepadInput(pad, deadzoneRef.current, mappingRef.current)
+
+      // Merge keyboard state for testing
+      input.buttons.a = input.buttons.a || keyboardStateRef.current.a
+      input.buttons.start = input.buttons.start || keyboardStateRef.current.start
+
+      // ☰ toggles pause/resume
+      const startPressed = input.buttons.start
+      if (startPressed && !startButtonPrevRef.current) {
+        const state = loop.getState()
+        if (state === 'running') loop.pause()
+        else if (state === 'paused') loop.resume()
+      }
+      startButtonPrevRef.current = startPressed
+
+      // Escape quits a run back to the idle screen
+      if (keyboardStateRef.current.escape) {
+        const state = loop.getState()
+        if (state === 'running' || state === 'paused') loop.reset()
+      }
+
+      return input
+    })
+
+    // Drive the challenge from the loop's fixed timestep.
+    loop.setUpdateFn((dt: number, input: NormalizedInput) => {
       const current = currentChallengeRef.current
       if (!current) return
-      if (current.renderMode === 'pixi') {
-        current.drawPixi?.()
-        pixiAppRef.current?.render()
-        return
-      }
-      if (!rendererRef.current) return
-      current.draw?.(rendererRef.current.getContext().ctx)
-      const state = loop.getState()
-      if (
-        current.id === 'button-blitz' &&
-        (state === 'countdown' || state === 'running' || state === 'paused')
-      ) {
-        drawTimerHud(rendererRef.current, loop.getTimeRemaining(), current.duration)
-      }
+      const state = current.update(dt, input)
+      latestStateRef.current = state
+      // Challenge-driven early finish (e.g. Gravity Jockey: both ships docked).
+      if (state.metadata.finished === true) loop.finish()
     })
+
+    loop.setDrawFn(() => {
+      const current = currentChallengeRef.current
+      const state = loop.getState()
+
+      if (current) {
+        if (current.renderMode === 'pixi') {
+          current.drawPixi?.()
+          pixiAppRef.current?.render()
+        } else if (rendererRef.current) {
+          current.draw?.(rendererRef.current)
+          current.drawHud?.(rendererRef.current, loop.getTimeRemaining())
+        }
+      }
+
+      // Countdown overlay value (only changes once per second).
+      const cd = state === 'countdown' ? loop.getCountdownValue() : null
+      setCountdownValue((prev) => (prev === cd ? prev : cd))
+
+      // Mirror the live score/time into the DOM HUD for assistive tech. The
+      // update only happens when a displayed value actually changes.
+      const score = latestStateRef.current?.score ?? 0
+      const remaining = loop.getTimeRemaining()
+      const progress = loop.getProgress()
+      setHud((prev) =>
+        prev.score === score &&
+        Math.abs(prev.remaining - remaining) < 0.05 &&
+        Math.abs(prev.progress - progress) < 0.005
+          ? prev
+          : { score, remaining, progress }
+      )
+    })
+
     gameLoopRef.current = loop
     loop.start()
     return () => {
       loop.destroy()
       rendererRef.current?.destroy()
       rendererRef.current = null
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
     }
   }, [challenge])
 
@@ -249,62 +328,6 @@ export function PlayPage({
     }
   }, [challenge])
 
-  // Per-frame input: normalize, feed the loop, handle ☰ pause/resume, and
-  // advance the challenge while running (unchanged behaviour).
-  useEffect(() => {
-    if (!gameLoopRef.current || !gamepad) return
-    const updateInput = () => {
-      if (!gameLoopRef.current || !gamepad) return
-      const input = normalizeGamepadInput(gamepad, settings.deadzone, currentMapping)
-
-      // Merge keyboard state for testing
-      input.buttons.a = input.buttons.a || keyboardStateRef.current.a
-      input.buttons.start = input.buttons.start || keyboardStateRef.current.start
-
-      gameLoopRef.current.setInput(input)
-
-      // ☰ toggles pause/resume
-      const startPressed = input.buttons.start
-      if (startPressed && !startButtonPrevRef.current) {
-        const state = gameLoopRef.current.getState()
-        if (state === 'running') gameLoopRef.current.pause()
-        else if (state === 'paused') gameLoopRef.current.resume()
-      }
-      startButtonPrevRef.current = startPressed
-
-      // Escape quits a run back to the idle screen
-      if (keyboardStateRef.current.escape) {
-        const state = gameLoopRef.current.getState()
-        if (state === 'running' || state === 'paused') gameLoopRef.current.reset()
-      }
-
-      if (currentChallengeRef.current && gameLoopRef.current.getState() === 'running') {
-        const challengeState = currentChallengeRef.current.update(1 / 60, input)
-        // Challenge-driven early finish (e.g. Gravity Jockey: both ships docked).
-        if (challengeState.metadata.finished === true) gameLoopRef.current.finish()
-      }
-      animationFrameRef.current = requestAnimationFrame(updateInput)
-    }
-    animationFrameRef.current = requestAnimationFrame(updateInput)
-    return () => {
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
-    }
-  }, [gamepad, settings.deadzone, currentMapping])
-
-  // Countdown value → overlay
-  useEffect(() => {
-    if (!gameLoopRef.current) return
-    let frameId = 0
-    const checkCountdown = () => {
-      const loop = gameLoopRef.current
-      if (loop && loop.getState() === 'countdown') setCountdownValue(loop.getCountdownValue())
-      else setCountdownValue(null)
-      frameId = requestAnimationFrame(checkCountdown)
-    }
-    checkCountdown()
-    return () => cancelAnimationFrame(frameId)
-  }, [])
-
   // Result handling: score, PB, and — fix 4a — arm the input latch so a button
   // still held (or mid-mash) at the transition cannot dismiss the result screen.
   useEffect(() => {
@@ -320,31 +343,30 @@ export function PlayPage({
   const startChallenge = useCallback(
     (id: string) => {
       const next = getChallenge(id)
-      if (!next || !gameLoopRef.current) return
-      if (next.renderMode === 'pixi') {
-        const app = pixiAppRef.current
-        if (!app) return
-        resultHandledRef.current = false
-        setGameState('idle')
-        setLastResult(null)
-        setCountdownValue(null)
-        currentChallengeRef.current = next
-        next.setupPixi?.(app, gamepad)
-        next.reset()
-        gameLoopRef.current.startChallenge(next.duration)
-        return
-      }
-      if (!rendererRef.current || !gamepad) return
+      const loop = gameLoopRef.current
+      if (!next || !loop) return
+      const isPixi = next.renderMode === 'pixi'
+      if (isPixi && !pixiAppRef.current) return
+      if (!isPixi && !rendererRef.current) return
+
       resultHandledRef.current = false
+      latestStateRef.current = null
+      setPbAtStart(personalBests[id])
       setGameState('idle')
       setLastResult(null)
       setCountdownValue(null)
+      setHud({ score: 0, remaining: next.duration, progress: 0 })
       currentChallengeRef.current = next
-      next.setup?.(rendererRef.current.getContext().ctx, gamepad)
+
+      if (isPixi) {
+        next.setupPixi?.(pixiAppRef.current!, gamepadRef.current)
+      } else {
+        next.setup?.(rendererRef.current!, gamepadRef.current!)
+      }
       next.reset()
-      gameLoopRef.current.startChallenge(next.duration)
+      loop.startChallenge(next.duration)
     },
-    [gamepad]
+    [personalBests]
   )
 
   // ---- Gamepad-driven navigation for this route ---------------------------
@@ -356,7 +378,7 @@ export function PlayPage({
     gamepad,
     enabled: navEnabled,
     deadzone: settings.deadzone,
-    mapping: currentMapping,
+    mapping: currentOverrides,
     lockout,
     getScope: () => overlayRef.current,
     // Fix 4a: A never activates anything on the result screen — only B leaves it.
@@ -370,7 +392,7 @@ export function PlayPage({
     onStart: () => {
       // ☰ retries a finished run (instant restart for gamepad users) and is a
       // no-op mid-run — pause/resume is handled by the Start toggle in the
-      // input loop. The transition lock-out still guards a held Start.
+      // input sampler. The transition lock-out still guards a held Start.
       if (!connected || pixiPending) return
       const state = gameLoopRef.current?.getState()
       if (state === 'idle' || state === 'result') startChallenge(challengeId)
@@ -401,6 +423,14 @@ export function PlayPage({
   }
 
   const pb = personalBests[challengeId]
+  const previousPb = pbAtStart
+  const isNewPB = previousPb !== undefined && lastResult !== null && lastResult.score > previousPb.score
+  const scoreDelta = previousPb && lastResult ? lastResult.score - previousPb.score : 0
+
+  // The next challenge in the library lineup (never the dev-only showcase).
+  const production = challenges.filter((c) => c.id !== 'pixi-demo')
+  const currentIndex = production.findIndex((c) => c.id === challengeId)
+  const nextChallenge = currentIndex >= 0 ? production[(currentIndex + 1) % production.length] : undefined
 
   const renderConnect = () => (
     <div className="screen" role="alert">
@@ -426,6 +456,25 @@ export function PlayPage({
     </div>
   )
 
+  const renderBriefing = () => (
+    <div className="briefing">
+      <h3 className="briefing-title">HOW TO PLAY</h3>
+      <ul className="briefing-list">
+        {meta.instructions.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      <div className="briefing-tags">
+        {meta.skills.map((skill) => (
+          <span className="meta-chip" key={skill}>
+            {skill}
+          </span>
+        ))}
+        <span className="meta-chip meta-chip-difficulty">{meta.difficulty}</span>
+      </div>
+    </div>
+  )
+
   const renderScreen = () => {
     if (!connected) return renderConnect()
 
@@ -435,6 +484,7 @@ export function PlayPage({
           <div className="screen play-idle-screen">
             <h2 className="screen-title">{challenge.name.toUpperCase()}</h2>
             <p className="screen-subtitle">{challenge.description}</p>
+            {renderBriefing()}
             {pb && (
               <div className="play-pb">
                 PB: {pb.score.toLocaleString()} ({pb.grade})
@@ -477,7 +527,6 @@ export function PlayPage({
         )
       case 'result': {
         if (!lastResult) return null
-        const isNewPB = pb !== undefined && pb.timestamp === lastResult.timestamp
         const announcement = `Challenge complete. Grade ${lastResult.grade}. Score ${lastResult.score.toLocaleString()}.${isNewPB ? ' New personal best.' : ''}`
         return (
           <div className="screen result-screen">
@@ -494,6 +543,18 @@ export function PlayPage({
             </div>
             <div className="result-score" aria-label={`Score ${lastResult.score.toLocaleString()}`}>
               {lastResult.score.toLocaleString()}
+            </div>
+            <div className="result-delta">
+              {isNewPB ? (
+                <span className="result-delta-up">NEW BEST · +{scoreDelta.toLocaleString()}</span>
+              ) : previousPb ? (
+                <span className={scoreDelta >= 0 ? 'result-delta-up' : 'result-delta-down'}>
+                  {scoreDelta >= 0 ? '+' : ''}
+                  {scoreDelta.toLocaleString()} vs best
+                </span>
+              ) : (
+                <span className="result-delta-new">FIRST RUN</span>
+              )}
             </div>
             <div className="result-stats">
               {Object.entries(lastResult.details).map(([key, value]) => (
@@ -514,6 +575,14 @@ export function PlayPage({
               <button className="btn btn-primary" onClick={() => startChallenge(challengeId)}>
                 RETRY
               </button>
+              {nextChallenge && nextChallenge.id !== challengeId && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => navigate(`/play/${nextChallenge.id}`)}
+                >
+                  NEXT: {nextChallenge.name.toUpperCase()}
+                </button>
+              )}
               <button className="btn btn-secondary" onClick={goBack}>
                 MENU
               </button>
@@ -522,7 +591,6 @@ export function PlayPage({
         )
       }
       default:
-
         return null
     }
   }
@@ -530,7 +598,7 @@ export function PlayPage({
   const renderDebug = () => {
     if (!import.meta.env.DEV && !new URLSearchParams(window.location.search).has('debug')) return null
     if (!gamepad) return null
-    const input = normalizeGamepadInput(gamepad, settings.deadzone, currentMapping)
+    const input = normalizeGamepadInput(gamepad, settings.deadzone, currentOverrides)
     const rawPressed = gamepad.buttons.map((b, i) => (b.pressed ? i : -1)).filter((i) => i !== -1)
     return (
       <div className="debug-overlay">
@@ -538,6 +606,7 @@ export function PlayPage({
         <div className="debug-row"><span className="debug-label">Mapping:</span><span className="debug-value">{gamepad.mapping}</span></div>
         <div className="debug-row"><span className="debug-label">L-Stick:</span><span className="debug-value">{input.axes.leftStick.x.toFixed(2)}, {input.axes.leftStick.y.toFixed(2)}</span></div>
         <div className="debug-row"><span className="debug-label">R-Stick:</span><span className="debug-value">{input.axes.rightStick.x.toFixed(2)}, {input.axes.rightStick.y.toFixed(2)}</span></div>
+        <div className="debug-row"><span className="debug-label">D-Pad:</span><span className="debug-value">{input.dpad.x.toFixed(2)}, {input.dpad.y.toFixed(2)}</span></div>
         <div className="debug-row"><span className="debug-label">LT/RT:</span><span className="debug-value">{input.axes.leftTrigger.toFixed(2)} / {input.axes.rightTrigger.toFixed(2)}</span></div>
         <div className="debug-row"><span className="debug-label">Buttons:</span><span className="debug-value">{Object.entries(input.buttons).filter(([, v]) => v).map(([k]) => k.toUpperCase()).join(', ') || 'none'}</span></div>
         <div className="debug-row"><span className="debug-label">Raw Pressed:</span><span className="debug-value">{rawPressed.join(', ')}</span></div>
@@ -546,6 +615,7 @@ export function PlayPage({
   }
 
   const containerClass = 'canvas-container' + (navMode ? ' gamepad-nav' : '')
+  const hudVisible = gameState === 'countdown' || gameState === 'running' || gameState === 'paused'
 
   return (
     <motion.div
@@ -570,6 +640,28 @@ export function PlayPage({
           <ControllerGlyph className="art-ps" />
         </div>
       </div>
+
+      {/* DOM mirror of the live score/time so the HUD is not canvas-only. */}
+      {hudVisible && (
+        <div className="hud-bar">
+          <div className="hud-progress" role="presentation">
+            <span className="hud-progress-fill" style={{ width: `${Math.round(hud.progress * 100)}%` }} />
+          </div>
+          <div className="hud-stats">
+            <span className="hud-stat">
+              <span className="hud-label">SCORE</span>
+              <span className="hud-value">{hud.score.toLocaleString()}</span>
+            </span>
+            <span className="hud-stat">
+              <span className="hud-label">TIME</span>
+              <span className={'hud-value' + (hud.remaining <= 5 ? ' hud-value-danger' : '')}>
+                {hud.remaining.toFixed(1)}s
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="ui-overlay" ref={overlayRef}>
         {renderScreen()}
       </div>
@@ -590,9 +682,3 @@ export function PlayPage({
     </motion.div>
   )
 }
-
-
-
-
-
-

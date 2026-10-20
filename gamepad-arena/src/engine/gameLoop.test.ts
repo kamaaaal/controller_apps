@@ -158,12 +158,47 @@ describe('GameLoop input isolation', () => {
     advance(loop, TIMING.countdownSeconds + 0.1) // running
     const input: NormalizedInput = {
       axes: { leftStick: { x: 1, y: 0 }, rightStick: { x: -1, y: 0 }, leftTrigger: 0, rightTrigger: 0 },
+      dpad: { x: 0, y: 0 },
       buttons: { a: true, b: false, x: false, y: false, lb: false, rb: false, back: false, start: false, ls: false, rs: false, dpadUp: false, dpadDown: false, dpadLeft: false, dpadRight: false },
       rawAxes: [], rawButtons: [],
     }
     loop.setInput(input)
     advance(loop, 0.1)
     expect(seen).toBe(input)
+    loop.destroy()
+  })
+
+  it('samples the input provider once per frame, ahead of the simulation', () => {
+    const loop = new GameLoop()
+    let samples = 0
+    const provided: NormalizedInput = {
+      axes: { leftStick: { x: 0, y: 0 }, rightStick: { x: 0, y: 0 }, leftTrigger: 0, rightTrigger: 0 },
+      dpad: { x: 0, y: 0 },
+      buttons: { a: false, b: false, x: false, y: false, lb: false, rb: false, back: false, start: false, ls: false, rs: false, dpadUp: false, dpadDown: false, dpadLeft: false, dpadRight: false },
+      rawAxes: [], rawButtons: [],
+    }
+    loop.setInputProvider(() => {
+      samples++
+      return provided
+    })
+    let seen: NormalizedInput | null = null
+    loop.setUpdateFn((_dt, input) => { seen = input })
+    loop.startChallenge(DURATION)
+    advance(loop, TIMING.countdownSeconds + 0.1)
+
+    expect(samples).toBeGreaterThan(0)
+    expect(seen).toBe(provided)
+    loop.destroy()
+  })
+
+  it('keeps the last known input when the provider returns null', () => {
+    const loop = new GameLoop()
+    loop.setInputProvider(() => null)
+    let seen: NormalizedInput | null = null
+    loop.setUpdateFn((_dt, input) => { seen = input })
+    loop.startChallenge(DURATION)
+    advance(loop, TIMING.countdownSeconds + 0.1)
+    expect(seen).not.toBeNull()
     loop.destroy()
   })
 })

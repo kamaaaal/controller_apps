@@ -15,6 +15,8 @@ import type { Application, Container, Graphics, Text, TextStyleOptions } from 'p
 import type { Challenge, ChallengeState, NormalizedInput, ScoreResult } from '../../types'
 import { playSfx } from '../../engine/audio'
 import { BurstPool, type PixiModules } from '../../engine/pixiFx'
+import { TIMING } from '../../config/timing'
+import { getMoveVector } from '../../utils/input'
 import {
   EARLY_TOLERANCE_S,
   ENTRY_MAGNITUDE,
@@ -65,7 +67,7 @@ export class EchoDriftChallenge implements Challenge {
   id = 'echo-drift'
   name = 'Echo Drift'
   description = 'Watch the pulse, then echo it — order AND rhythm, both sticks'
-  duration = 75
+  duration = TIMING.challengeDurations['echo-drift']
   renderMode = 'pixi' as const
 
   private app: Application | null = null
@@ -171,8 +173,8 @@ export class EchoDriftChallenge implements Challenge {
     this.sessionTime += dt
     this.phaseTime += dt
 
-    const l = input.axes.leftStick
-    const r = input.axes.rightStick
+    const l = getMoveVector(input, 'left')
+    const r = getMoveVector(input, 'right')
     this.leftInput = { angle: stickAngle(l.x, l.y), magnitude: Math.hypot(l.x, l.y) }
     this.rightInput = { angle: stickAngle(r.x, r.y), magnitude: Math.hypot(r.x, r.y) }
 
@@ -195,6 +197,10 @@ export class EchoDriftChallenge implements Challenge {
         this.startRound()
       }
     }
+
+    // Particle simulation advances on the fixed timestep, not on the draw rate.
+    this.bursts?.update(dt)
+    if (this.banner.life > 0) this.banner.life = Math.max(0, this.banner.life - dt)
 
     return {
       progress: Math.min(1, this.sessionTime / this.duration),
@@ -404,9 +410,6 @@ export class EchoDriftChallenge implements Challenge {
     }
     place(inp.left, this.leftInput, 55)
     place(inp.right, this.rightInput, 85)
-
-    this.bursts!.update(1 / 60)
-    if (this.banner.life > 0) this.banner.life = Math.max(0, this.banner.life - 1 / 60)
 
     // HUD.
     const remaining = Math.max(0, this.duration - this.sessionTime)

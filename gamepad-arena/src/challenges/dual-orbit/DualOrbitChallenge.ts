@@ -104,9 +104,9 @@ export class DualOrbitChallenge implements Challenge {
     else this.rightWhole = whole
   }
 
-  setup(ctx: CanvasRenderingContext2D, _gamepad: Gamepad): void {
-    this.renderer?.destroy()
-    this.renderer = new Renderer(ctx.canvas)
+  setup(renderer: Renderer, _gamepad: Gamepad): void {
+    // The host hands over the shared renderer — never construct a second one.
+    this.renderer = renderer
     this.reset()
   }
 
@@ -213,10 +213,8 @@ export class DualOrbitChallenge implements Challenge {
     return 'F'
   }
 
-  draw(_ctx: CanvasRenderingContext2D): void {
-    if (!this.renderer) return
-
-    const r = this.renderer
+  draw(renderer: Renderer): void {
+    const r = this.renderer ?? renderer
     const { width, height } = r.getContext()
     const centerX = width / 2
 

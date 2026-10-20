@@ -16,6 +16,7 @@
 
 import type { Application, Graphics, Text } from 'pixi.js'
 import type { Challenge, ChallengeState, NormalizedInput, ScoreResult } from '../../types'
+import { TIMING } from '../../config/timing'
 
 const NEON = 0x9bf00b
 const PS_BLUE = 0x1e8fff
@@ -33,7 +34,7 @@ export class PixiDemoChallenge implements Challenge {
   id = 'pixi-demo'
   name = 'Pixi Demo (dev)'
   description = 'Dev template: lazy-loaded PixiJS scene — stick, A burst, B shake'
-  duration = 30
+  duration = TIMING.challengeDurations['pixi-demo']
   renderMode = 'pixi' as const
 
   private app: Application | null = null

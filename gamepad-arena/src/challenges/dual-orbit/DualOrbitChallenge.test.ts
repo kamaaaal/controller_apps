@@ -1,24 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { DualOrbitChallenge } from './DualOrbitChallenge'
-import type { NormalizedInput } from '../../types'
-
-function makeInput(lx: number, ly: number, rx: number, ry: number): NormalizedInput {
-  return {
-    axes: {
-      leftStick: { x: lx, y: ly },
-      rightStick: { x: rx, y: ry },
-      leftTrigger: 0,
-      rightTrigger: 0,
-    },
-    buttons: {
-      a: false, b: false, x: false, y: false, lb: false, rb: false,
-      back: false, start: false, ls: false, rs: false,
-      dpadUp: false, dpadDown: false, dpadLeft: false, dpadRight: false,
-    },
-    rawAxes: [],
-    rawButtons: [],
-  }
-}
+import { makeInput } from '../../test/input'
 
 const DT = 1 / 60
 
@@ -35,7 +17,13 @@ function spin(
     const a = (i / stepsPerRotation) * Math.PI * 2
     const la = a * leftDir
     const ra = a * rightDir
-    challenge.update(DT, makeInput(Math.cos(la), Math.sin(la), Math.cos(ra), Math.sin(ra)))
+    challenge.update(
+      DT,
+      makeInput({
+        leftStick: { x: Math.cos(la), y: Math.sin(la) },
+        rightStick: { x: Math.cos(ra), y: Math.sin(ra) },
+      })
+    )
   }
 }
 
@@ -63,7 +51,13 @@ describe('DualOrbitChallenge', () => {
     const idle = new DualOrbitChallenge()
     idle.reset()
     for (let i = 0; i < 200; i++) {
-      idle.update(DT, makeInput(0.1, 0.1, -0.1, -0.1))
+      idle.update(
+        DT,
+        makeInput({
+          leftStick: { x: 0.1, y: 0.1 },
+          rightStick: { x: -0.1, y: -0.1 },
+        })
+      )
     }
 
     expect(idle.getScore().details.rotations).toBe(0)

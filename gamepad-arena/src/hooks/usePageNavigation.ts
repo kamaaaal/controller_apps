@@ -21,20 +21,29 @@ import { getFocusableElements, type NavDirection } from '../utils/focusNavigatio
 import { useFocusNavigation } from './useFocusNavigation'
 import { useGamepadNavigation } from './useGamepadNavigation'
 import type { InputLockout } from '../utils/inputLockout'
-import type { ButtonMapping } from '../types'
+import type { ControllerOverrides } from '../utils/input'
 
 export interface PageNavigationOptions {
   gamepad: Gamepad | null
   /** False while the page should ignore navigation (e.g. active gameplay). */
   enabled: boolean
   deadzone?: number
-  mapping?: ButtonMapping
+  /** Per-device overrides (button map, axis map, hat switch). */
+  mapping?: ControllerOverrides
   /** Shared transition latch; armed by the shell on route changes/results. */
   lockout?: InputLockout
   /** Container owning this page's focusable controls. */
   getScope: () => HTMLElement | null
   /** Optional selector for the preferred initial focus target (e.g. the selected card). */
   selectedSelector?: string
+  /**
+   * Navigate up/down in reading order instead of by geometry.
+   *
+   * Form-like screens (settings) read top to bottom, so a spatial jump from a
+   * wide slider to a narrow checkbox further down the page is disorienting.
+   * Grids (the games library) keep the spatial behaviour.
+   */
+  linearVertical?: boolean
   /** Return false to veto A-confirm (e.g. the result screen ignores A entirely). */
   canConfirm?: () => boolean
   onBack: () => void
@@ -48,7 +57,7 @@ export function usePageNavigation(options: PageNavigationOptions): { navMode: bo
   })
 
   const getScopeRef = useCallback(() => optionsRef.current.getScope(), [])
-  const { move } = useFocusNavigation(getScopeRef)
+  const { move } = useFocusNavigation(getScopeRef, options.linearVertical ?? false)
 
   const [navMode, setNavMode] = useState(false)
   const handleActivity = useCallback(() => setNavMode(true), [])

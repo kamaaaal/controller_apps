@@ -15,11 +15,12 @@ import { Renderer } from '../../engine/renderer'
 import { PALETTE, gradeColor, isReducedMotion } from '../../engine/palette'
 import { Fx } from '../../engine/fx'
 import { TIMING } from '../../config/timing'
+import { getMoveVector } from '../../utils/input'
+import { distance, moveCursor } from './movement'
 
 const ROUND_TIME = TIMING.twinTargetRoundSeconds // seconds per round
 const TARGET_RADIUS = 24
 const CURSOR_RADIUS = 12
-const MOVE_SPEED = 400 // pixels per second at full stick
 
 // Left cursor = Xbox green, right cursor = PlayStation blue (paired with L/R
 // labels so the two are never distinguished by colour alone).
@@ -67,9 +68,9 @@ export class TwinTargetChallenge implements Challenge {
   score = 0
   grade: ScoreResult['grade'] = 'F'
 
-  setup(ctx: CanvasRenderingContext2D, _gamepad: Gamepad): void {
-    this.renderer?.destroy()
-    this.renderer = new Renderer(ctx.canvas)
+  setup(renderer: Renderer, _gamepad: Gamepad): void {
+    // The host hands over the shared renderer — never construct a second one.
+    this.renderer = renderer
     this.reset()
   }
 
@@ -78,9 +79,10 @@ export class TwinTargetChallenge implements Challenge {
     this.roundTime += dt
     this.fx.update(dt)
 
-    // Input is already normalized + deadzoned upstream; use it directly.
-    const leftInput = input.axes.leftStick
-    const rightInput = input.axes.rightStick
+    // Input is already normalized + deadzoned upstream; use it directly. The
+    // D-pad is accepted as an alternative to either stick.
+    const leftInput = getMoveVector(input, 'left')
+    const rightInput = getMoveVector(input, 'right')
 
     if (this.leftCursor) {
       this.moveCursor(this.leftCursor, leftInput, dt)
@@ -91,8 +93,8 @@ export class TwinTargetChallenge implements Challenge {
 
     // Check if both cursors reached their targets
     if (this.leftCursor && this.rightCursor) {
-      const leftReached = this.distance(this.leftCursor.x, this.leftCursor.y, this.leftCursor.targetX, this.leftCursor.targetY) < TARGET_RADIUS
-      const rightReached = this.distance(this.rightCursor.x, this.rightCursor.y, this.rightCursor.targetX, this.rightCursor.targetY) < TARGET_RADIUS
+      const leftReached = distance(this.leftCursor.x, this.leftCursor.y, this.leftCursor.targetX, this.leftCursor.targetY) < TARGET_RADIUS
+      const rightReached = distance(this.rightCursor.x, this.rightCursor.y, this.rightCursor.targetX, this.rightCursor.targetY) < TARGET_RADIUS
 
       if (leftReached && rightReached) {
         this.completeRound()
@@ -121,15 +123,14 @@ export class TwinTargetChallenge implements Challenge {
   }
 
   private moveCursor(cursor: Cursor, input: { x: number; y: number }, dt: number): void {
-    const dx = input.x * MOVE_SPEED * dt
-    const dy = input.y * MOVE_SPEED * dt
-
-    cursor.x = Math.max(cursor.zoneLeft, Math.min(cursor.zoneRight, cursor.x + dx))
-    cursor.y = Math.max(cursor.zoneTop, Math.min(cursor.zoneBottom, cursor.y + dy))
-  }
-
-  private distance(x1: number, y1: number, x2: number, y2: number): number {
-    return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    const moved = moveCursor(cursor, input, {
+      left: cursor.zoneLeft,
+      right: cursor.zoneRight,
+      top: cursor.zoneTop,
+      bottom: cursor.zoneBottom,
+    }, dt)
+    cursor.x = moved.x
+    cursor.y = moved.y
   }
 
   private completeRound(completed: boolean = true): void {
@@ -227,10 +228,8 @@ export class TwinTargetChallenge implements Challenge {
     return 'F'
   }
 
-  draw(_ctx: CanvasRenderingContext2D): void {
-    if (!this.renderer) return
-
-    const r = this.renderer
+  draw(renderer: Renderer): void {
+    const r = this.renderer ?? renderer
     const { width, height } = r.getContext()
 
     r.drawBackdrop()

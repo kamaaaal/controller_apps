@@ -5,7 +5,12 @@
  */
 
 import { useCallback } from 'react'
-import { findNextFocus, getFocusableElements, type NavDirection } from '../utils/focusNavigation'
+import {
+  findNextFocus,
+  findNextInOrder,
+  getFocusableElements,
+  type NavDirection,
+} from '../utils/focusNavigation'
 
 export interface FocusNavigation {
   move: (direction: NavDirection) => void
@@ -16,8 +21,13 @@ export interface FocusNavigation {
 /**
  * @param getScope Returns the container to navigate within (e.g. the current
  *   screen, or an open modal). Defaults to the document body when null.
+ * @param linearVertical When true, up/down walk the controls in reading order
+ *   instead of by geometry. Forms behave better this way; grids do not.
  */
-export function useFocusNavigation(getScope: () => HTMLElement | null): FocusNavigation {
+export function useFocusNavigation(
+  getScope: () => HTMLElement | null,
+  linearVertical = false
+): FocusNavigation {
   const resolve = useCallback(() => getScope() ?? document.body, [getScope])
 
   const move = useCallback(
@@ -29,9 +39,13 @@ export function useFocusNavigation(getScope: () => HTMLElement | null): FocusNav
         items[0].focus()
         return
       }
+      if (linearVertical && (direction === 'up' || direction === 'down')) {
+        findNextInOrder(active, items, direction)?.focus()
+        return
+      }
       findNextFocus(active, items, direction)?.focus()
     },
-    [resolve]
+    [resolve, linearVertical]
   )
 
   const focusFirst = useCallback(() => {

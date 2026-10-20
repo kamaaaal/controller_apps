@@ -10,10 +10,10 @@
  */
 
 import { useEffect, useRef } from 'react'
-import { normalizeGamepadInput } from '../utils/input'
+import { normalizeGamepadInput, type ControllerOverrides } from '../utils/input'
 import { NAV_DIRECTIONS, type NavDirection } from '../utils/focusNavigation'
 import type { InputLockout } from '../utils/inputLockout'
-import type { ButtonMapping, NormalizedInput } from '../types'
+import type { NormalizedInput } from '../types'
 
 /** Left-stick magnitude required before it counts as a directional press. */
 const NAV_STICK_THRESHOLD = 0.5
@@ -35,10 +35,14 @@ interface NavState {
 
 function deriveState(input: NormalizedInput): NavState {
   const b = input.buttons
-  let up = b.dpadUp
-  let down = b.dpadDown
-  let left = b.dpadLeft
-  let right = b.dpadRight
+
+  // The D-pad arrives as a single vector (from buttons or from a hat switch
+  // on an axis), so one code path covers every controller.
+  const dpad = input.dpad
+  let up = dpad.y < -0.5
+  let down = dpad.y > 0.5
+  let left = dpad.x < -0.5
+  let right = dpad.x > 0.5
 
   const stick = input.axes.leftStick
   if (Math.hypot(stick.x, stick.y) > NAV_STICK_THRESHOLD) {
@@ -59,7 +63,8 @@ export interface GamepadNavigationOptions {
   /** When false (e.g. during gameplay) input is ignored but edge state is kept in sync. */
   enabled: boolean
   deadzone?: number
-  mapping?: ButtonMapping
+  /** Per-device overrides (button map, axis map, hat switch). */
+  mapping?: ControllerOverrides
   /**
    * Optional transition lock-out (iteration 13, fix 4a). While the latch is
    * locked, confirm / back / start edges are swallowed; directions still work.

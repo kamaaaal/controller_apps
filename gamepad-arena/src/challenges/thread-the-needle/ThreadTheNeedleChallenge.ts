@@ -16,6 +16,8 @@ import type { Application, Container, Graphics, Text, TextStyleOptions } from 'p
 import type { Challenge, ChallengeState, NormalizedInput, ScoreResult } from '../../types'
 import { playSfx } from '../../engine/audio'
 import { BurstPool, PulseRing, Trail, computeShake, type PixiModules } from '../../engine/pixiFx'
+import { TIMING } from '../../config/timing'
+import { getMoveVector } from '../../utils/input'
 import {
   CLIMB_NUDGE,
   CLIMB_SPEED,
@@ -55,7 +57,7 @@ export class ThreadTheNeedleChallenge implements Challenge {
   id = 'thread-the-needle'
   name = 'Thread the Needle'
   description = 'Twin orbs, twin corridors — thread every gate without touching the walls'
-  duration = 60
+  duration = TIMING.challengeDurations['thread-the-needle']
   renderMode = 'pixi' as const
 
   private app: Application | null = null
@@ -157,14 +159,25 @@ export class ThreadTheNeedleChallenge implements Challenge {
     const course = this.course
     const halfW = corridorHalfWidth(progress)
 
-    this.stepOrb(this.left, input.axes.leftStick, 'left', course, halfW, dt)
-    this.stepOrb(this.right, input.axes.rightStick, 'right', course, halfW, dt)
+    this.stepOrb(this.left, getMoveVector(input, 'left'), 'left', course, halfW, dt)
+    this.stepOrb(this.right, getMoveVector(input, 'right'), 'right', course, halfW, dt)
 
     this.checkGates('left', course)
     this.checkGates('right', course)
 
     if (this.shakeTime > 0) this.shakeTime = Math.max(0, this.shakeTime - dt)
     if (this.banner.life > 0) this.banner.life = Math.max(0, this.banner.life - dt)
+
+    // Trail and particle simulation advance on the fixed timestep, not on the
+    // draw rate, so effects age at the same speed on every display.
+    for (const side of ['left', 'right'] as const) {
+      const orb = side === 'left' ? this.left : this.right
+      const trail = side === 'left' ? this.trails?.left : this.trails?.right
+      trail?.push(orb.x, this.screenY(orb.y))
+      trail?.update(dt)
+    }
+    this.bursts?.update(dt)
+    this.pulses?.update(dt)
 
     return {
       progress,
@@ -378,12 +391,8 @@ export class ThreadTheNeedleChallenge implements Challenge {
       gfx.position.set(orb.x, sy)
       gfx.alpha = orb.flash > 0 ? 0.5 + Math.sin(orb.flash * 40) * 0.4 : 1
       const trail = side === 'left' ? this.trails!.left : this.trails!.right
-      trail.push(orb.x, sy)
-      trail.update(1 / 60)
       trail.redraw()
     }
-    this.bursts!.update(1 / 60)
-    this.pulses!.update(1 / 60)
 
     // Shake + HUD.
     const shake = computeShake(this.shakeTime, 0.25, 6)

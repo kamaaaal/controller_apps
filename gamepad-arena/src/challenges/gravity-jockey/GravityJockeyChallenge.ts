@@ -15,6 +15,8 @@ import type { Application, Container, Graphics, Text, TextStyleOptions } from 'p
 import type { Challenge, ChallengeState, NormalizedInput, ScoreResult } from '../../types'
 import { playSfx } from '../../engine/audio'
 import { BurstPool, PulseRing, Trail, computeShake, type PixiModules } from '../../engine/pixiFx'
+import { TIMING } from '../../config/timing'
+import { getMoveVector } from '../../utils/input'
 import {
   SHIP_RADIUS,
   bounceOff,
@@ -52,7 +54,7 @@ export class GravityJockeyChallenge implements Challenge {
   id = 'gravity-jockey'
   name = 'Gravity Jockey'
   description = 'Steer with momentum around gravity wells — slingshot, collect, dock'
-  duration = 60
+  duration = TIMING.challengeDurations['gravity-jockey']
   renderMode = 'pixi' as const
 
   private app: Application | null = null
@@ -164,13 +166,24 @@ export class GravityJockeyChallenge implements Challenge {
     const mine = minePosition(arena.mine, this.sessionTime)
     const bodies = [...arena.planets, mine]
 
-    this.stepShipState(this.left, input.axes.leftStick, arena.planets, bodies, dt, 'left')
-    this.stepShipState(this.right, input.axes.rightStick, arena.planets, bodies, dt, 'right')
+    this.stepShipState(this.left, getMoveVector(input, 'left'), arena.planets, bodies, dt, 'left')
+    this.stepShipState(this.right, getMoveVector(input, 'right'), arena.planets, bodies, dt, 'right')
 
     this.checkObjectives()
 
     if (this.shakeTime > 0) this.shakeTime = Math.max(0, this.shakeTime - dt)
     if (this.banner.life > 0) this.banner.life = Math.max(0, this.banner.life - dt)
+
+    // Trail and particle simulation advance on the fixed timestep, not on the
+    // draw rate, so effects age at the same speed on every display.
+    for (const side of ['left', 'right'] as const) {
+      const ship = side === 'left' ? this.left : this.right
+      const trail = side === 'left' ? this.trails?.left : this.trails?.right
+      trail?.push(ship.x, ship.y)
+      trail?.update(dt)
+    }
+    this.bursts?.update(dt)
+    this.pulses?.update(dt)
 
     return {
       progress: Math.min(1, this.sessionTime / this.duration),
@@ -378,12 +391,8 @@ export class GravityJockeyChallenge implements Challenge {
       gfx.position.set(ship.x, ship.y)
       gfx.alpha = ship.flash > 0 ? 0.4 + Math.sin(ship.flash * 40) * 0.4 : 1
       const trail = side === 'left' ? this.trails!.left : this.trails!.right
-      trail.push(ship.x, ship.y)
-      trail.update(1 / 60)
       trail.redraw()
     }
-    this.bursts!.update(1 / 60)
-    this.pulses!.update(1 / 60)
 
     const shake = computeShake(this.shakeTime, 0.3, 7)
     this.world.position.set(shake.x, shake.y)

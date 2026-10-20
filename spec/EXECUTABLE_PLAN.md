@@ -183,6 +183,7 @@ Each iteration creates a file in `spec/`:
 - `spec/iteration-15-fx-layer-pixi.md` — Game-feel FX layer (tweens/particles/shake/floaters) + lazy-loaded PixiJS for complex games
 - `spec/iteration-16-stick-arcade-games.md` — Joystick-first arcade wave: Thread the Needle, Gravity Jockey, Echo Drift (Pixi), audio synth, instant retry
 - `spec/iteration-17-full-bleed-library.md` — Full-bleed transparent library layout, no panel, no scrolling
+- `spec/iteration-18-engine-unification-new-challenges.md` — One clock/one renderer engine refactor, four new challenges (Pattern Lock, Mirror Protocol, Balance Beam, Map Recall), controller profiles with hat-switch D-pad support, focus-navigation fix, DOM HUD + briefing
 - `spec/known-issues.md` — Browser/controller quirks
 
 ---

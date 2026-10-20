@@ -2,6 +2,8 @@
  * Core type definitions for Gamepad Arena
  */
 
+import type { Renderer } from '../engine/renderer'
+
 export type GameState = 'idle' | 'countdown' | 'running' | 'paused' | 'result'
 
 export interface NormalizedInput {
@@ -11,6 +13,14 @@ export interface NormalizedInput {
     leftTrigger: number
     rightTrigger: number
   }
+  /**
+   * D-pad as a unit vector (8-way), zero when no direction is held.
+   *
+   * The D-pad is a first-class input: challenges that need directional
+   * movement read it through `getMoveVector` (see utils/input.ts) so the pad
+   * works as an alternative to either stick instead of being decorative.
+   */
+  dpad: { x: number; y: number }
   buttons: {
     a: boolean
     b: boolean
@@ -57,11 +67,24 @@ export interface Challenge {
   name: string
   description: string
   duration: number // seconds
-  /** Canvas 2D setup — required path for `renderMode: 'canvas2d'` challenges. */
-  setup?(ctx: CanvasRenderingContext2D, gamepad: Gamepad): void
+  /**
+   * Canvas 2D setup — required for `renderMode: 'canvas2d'` challenges.
+   *
+   * The host hands over the *shared* renderer; a challenge must reuse it
+   * rather than constructing its own (a second Renderer means a second
+   * canvas/ResizeObserver and a second source of truth for the viewport).
+   */
+  setup?(renderer: Renderer, gamepad: Gamepad): void
   update(dt: number, input: NormalizedInput): ChallengeState
   /** Canvas 2D draw — required path for `renderMode: 'canvas2d'` challenges. */
-  draw?(ctx: CanvasRenderingContext2D): void
+  draw?(renderer: Renderer): void
+  /**
+   * Optional HUD layer drawn after the scene (timer, score, prompt).
+   *
+   * `timeRemaining` comes from the game loop so every challenge can show a
+   * timer without the host special-casing individual game ids.
+   */
+  drawHud?(renderer: Renderer, timeRemaining: number): void
   getScore(): ScoreResult
   reset(): void
   /**
@@ -102,6 +125,39 @@ export interface ButtonMapping {
   dpadRight: number
 }
 
+/** Which raw axes carry the non-stick controls of a controller. */
+export interface AxisMapping {
+  /** Left stick X axis index (standard layout: 0). */
+  leftStickX: number
+  /** Left stick Y axis index (standard layout: 1). */
+  leftStickY: number
+  /** Right stick X axis index (standard layout: 2). */
+  rightStickX: number
+  /** Right stick Y axis index (standard layout: 3). */
+  rightStickY: number
+  /** Left trigger axis index (-1 = read the trigger button's value). */
+  leftTrigger: number
+  /** Right trigger axis index (-1 = read the trigger button's value). */
+  rightTrigger: number
+  /** Axis index carrying a D-pad hat switch (-1 = the D-pad reports buttons). */
+  dpadHat: number
+}
+
+/**
+ * A D-pad reported as a hat switch on an axis.
+ *
+ * `up`/`right`/`down`/`left` are the axis values that mean each direction;
+ * `rest` is the value the axis reads when the D-pad is released.
+ */
+export interface HatSpec {
+  axis: number
+  up: number
+  right: number
+  down: number
+  left: number
+  rest: number
+}
+
 export interface Settings {
   deadzone: number
   vibration: boolean
@@ -109,4 +165,11 @@ export interface Settings {
   reducedMotion: boolean
   audioEnabled: boolean
   customMapping?: ButtonMapping
+  customAxes?: Partial<AxisMapping>
+  customHat?: HatSpec | null
+  /**
+   * `auto` uses the layout detected for the connected controller;
+   * `standard` forces the XInput layout.
+   */
+  profileMode?: 'auto' | 'standard'
 }

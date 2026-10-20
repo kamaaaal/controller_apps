@@ -15,16 +15,28 @@ import { Navigate, Route, Routes, useParams, useLocation } from 'react-router-do
 import { AnimatePresence, MotionConfig } from 'motion/react'
 import { useGamepad } from './hooks/useGamepad'
 import { InputLockout } from './utils/inputLockout'
-import { DEFAULT_BUTTON_MAPPING } from './utils/input'
 import { ROUTES } from './utils/routes'
 import { setReducedMotion } from './engine/palette'
 import { setAudioEnabled } from './engine/audio'
-import { challenges } from './challenges'
-import { loadPersonalBest, savePersonalBest, loadSettings, saveSettings } from './store/localStorage'
+import {
+  clearAllData,
+  getAllPersonalBests,
+  loadSettings,
+  savePersonalBest,
+  saveSettings,
+} from './store/localStorage'
 import { LibraryPage } from './routes/LibraryPage'
 import { PlayPage, type PlayPageProps } from './routes/PlayPage'
 import { SettingsPage } from './routes/SettingsPage'
-import type { ButtonMapping, GameState, PersonalBest, ScoreResult, Settings } from './types'
+import type {
+  AxisMapping,
+  ButtonMapping,
+  GameState,
+  HatSpec,
+  PersonalBest,
+  ScoreResult,
+  Settings,
+} from './types'
 
 /** Re-mounts the play page per challenge id so each game gets a fresh engine. */
 function PlayRoute(props: Omit<PlayPageProps, 'challengeId'>) {
@@ -35,15 +47,9 @@ function PlayRoute(props: Omit<PlayPageProps, 'challengeId'>) {
 export default function App() {
   const { connected, gamepad, gamepads } = useGamepad(0)
   const [settings, setSettings] = useState<Settings>(() => loadSettings())
-  const [personalBests, setPersonalBests] = useState<Record<string, PersonalBest>>(() => {
-    // Read once on mount; per-run updates come from the play route.
-    const pbs: Record<string, PersonalBest> = {}
-    challenges.forEach((c) => {
-      const pb = loadPersonalBest(c.id)
-      if (pb) pbs[c.id] = pb
-    })
-    return pbs
-  })
+  const [personalBests, setPersonalBests] = useState<Record<string, PersonalBest>>(() =>
+    getAllPersonalBests()
+  )
   const [osReducedMotion, setOsReducedMotion] = useState(false)
   const [playPhase, setPlayPhase] = useState<GameState | null>(null)
 
@@ -95,25 +101,52 @@ export default function App() {
     })
   }, [])
 
-  const updateMapping = useCallback((key: keyof ButtonMapping, value: number) => {
+  /** Replace the whole button map (used by the D-pad calibration wizard). */
+  const updateMappingFull = useCallback((mapping: ButtonMapping) => {
     setSettings((prev) => {
-      const current = prev.customMapping || DEFAULT_BUTTON_MAPPING
-      const next = { ...prev, customMapping: { ...current, [key]: value } }
+      const next = { ...prev, customMapping: mapping }
       saveSettings(next)
       return next
     })
   }, [])
 
+  const updateProfileMode = useCallback((mode: 'auto' | 'standard') => {
+    setSettings((prev) => {
+      const next = { ...prev, profileMode: mode }
+      saveSettings(next)
+      return next
+    })
+  }, [])
   const resetMapping = useCallback(() => {
     setSettings((prev) => {
-      const next = { ...prev, customMapping: undefined }
+      // Back to the layout detected for the connected controller, not to the
+      // generic XInput defaults.
+      const next = { ...prev, customMapping: undefined, customAxes: undefined, customHat: undefined }
+      saveSettings(next)
+      return next
+    })
+  }, [])
+
+  const updateAxes = useCallback((patch: Partial<AxisMapping>) => {
+    setSettings((prev) => {
+      const next = { ...prev, customAxes: { ...(prev.customAxes ?? {}), ...patch } }
+      saveSettings(next)
+      return next
+    })
+  }, [])
+
+  const updateHat = useCallback((hat: HatSpec | null) => {
+    setSettings((prev) => {
+      const next = { ...prev, customHat: hat }
       saveSettings(next)
       return next
     })
   }, [])
 
   const clearData = useCallback(() => {
-    localStorage.clear()
+    // Scoped to this app's keys — `localStorage.clear()` would wipe every
+    // other site's data on the origin.
+    clearAllData()
     setPersonalBests({})
     setSettings(loadSettings())
   }, [])
@@ -189,7 +222,10 @@ export default function App() {
                   gamepad={gamepad}
                   settings={settings}
                   onUpdateSetting={updateSetting}
-                  onUpdateMapping={updateMapping}
+                  onUpdateMappingFull={updateMappingFull}
+                  onUpdateAxes={updateAxes}
+                  onUpdateHat={updateHat}
+                  onUpdateProfileMode={updateProfileMode}
                   onResetMapping={resetMapping}
                   onClearData={clearData}
                   lockout={lockout}

@@ -9,6 +9,7 @@ import { PALETTE, gradeColor, isReducedMotion } from '../../engine/palette'
 import { Fx } from '../../engine/fx'
 import { quadOut } from '../../engine/easings'
 import { TIMING } from '../../config/timing'
+import { formatSecondsRemaining } from '../../utils/timerFormat'
 
 export class ButtonBlitzChallenge implements Challenge {
   id = 'button-blitz'
@@ -35,9 +36,9 @@ export class ButtonBlitzChallenge implements Challenge {
     return { x: width / 2, y: height / 2 + 20 }
   }
 
-  setup(ctx: CanvasRenderingContext2D, _gamepad: Gamepad): void {
-    this.renderer?.destroy()
-    this.renderer = new Renderer(ctx.canvas)
+  setup(renderer: Renderer, _gamepad: Gamepad): void {
+    // The host hands over the shared renderer — never construct a second one.
+    this.renderer = renderer
     this.reset()
   }
 
@@ -138,10 +139,8 @@ export class ButtonBlitzChallenge implements Challenge {
     return 'F'
   }
 
-  draw(_ctx: CanvasRenderingContext2D): void {
-    if (!this.renderer) return
-
-    const r = this.renderer
+  draw(renderer: Renderer): void {
+    const r = this.renderer ?? renderer
     const { width, height } = r.getContext()
     const centerX = width / 2
     const centerY = height / 2
@@ -238,6 +237,31 @@ export class ButtonBlitzChallenge implements Challenge {
     })
 
     this.fx.draw(r)
+  }
+
+  /**
+   * The run timer. It lives on the challenge so the host stays free of
+   * per-game special cases — the loop hands over the remaining time.
+   */
+  drawHud(renderer: Renderer, timeRemaining: number): void {
+    const r = this.renderer ?? renderer
+    const { width } = r.getContext()
+    const barWidth = Math.min(280, width * 0.4)
+    const x = width / 2 - barWidth / 2
+    const progress = this.duration > 0 ? Math.min(1, Math.max(0, 1 - timeRemaining / this.duration)) : 1
+    const danger = timeRemaining <= 5
+
+    r.drawProgressBar(x, 16, barWidth, 10, progress, {
+      bgColor: PALETTE.ringTrack,
+      fgColor: danger ? PALETTE.red : PALETTE.xboxNeon,
+      borderColor: PALETTE.stroke,
+      glow: 10,
+    })
+    r.drawCenteredText(formatSecondsRemaining(timeRemaining), width / 2 + barWidth / 2 + 36, 28, {
+      font: '18px "JetBrains Mono", monospace',
+      color: danger ? PALETTE.red : PALETTE.ink,
+      glow: danger ? 10 : 0,
+    })
   }
 
   getScore(): ScoreResult {
